@@ -101,10 +101,7 @@ python3 tools/check-updates.py --src /path/to/infinity
 | Black frame when closing the shade on the lock screen, notifications appearing late when opening the shade by tapping the icon pill | Compact lock screen notifications (icon pill) together with a secure lock screen. | Use the full list of notifications on the lock screen (*Notifications on lock screen → show all*) instead of the compact pill. |
 | Screen flickering with max refresh rate 120 Hz and min 60 Hz | Not investigated yet. | Set both minimum and maximum refresh rate to 120 Hz. |
 | Settings search finds almost nothing after a dirty flash | Settings Services marks its index as up to date for the new build even when indexing ran before unlock and stored nothing. | *Settings → Apps → Settings Services → Storage → Clear data*, then open the search again: it re-indexes everything. |
-| Play Store keeps offering an update for Settings Services, which fails | Intended: the newer version only indexes Pixel Settings and breaks Settings search. | Ignore it. |
 | Ringtone, message and alarm sounds cannot be selected | Not the ROM: the *Hide vendor sepolicy* option of the susfs4ksu root module breaks `vold_prepare_subdirs`, so user storage is never marked as ready. | Turn off *Hide vendor sepolicy* in the susfs4ksu WebUI and reboot. |
-| Boot fails after flashing | The *Apple Fonts & Emoji* root module deletes `/data/fonts`, which the system then recreates without encryption. | Remove that module before flashing. |
-| Sound picker still slow on the first load of each screen | The repeated freezes are reduced by the canonicalize() cache, but the root cause is in the closed-source Google app. | None. |
 
 ## License
 
