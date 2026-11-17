@@ -1,3 +1,4 @@
 .dash.xml.bak-*
 .kernel_sync.log
 reports/
+__pycache__/
