@@ -2,3 +2,5 @@
 .kernel_sync.log
 reports/
 __pycache__/
+.systemui-backup/
+.systemui-test/
