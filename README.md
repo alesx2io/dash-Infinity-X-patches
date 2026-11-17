@@ -59,6 +59,28 @@ cd /path/to/infinity/frameworks/base
 git am --3way /path/to/dash-Infinity-X-patches/patches/frameworks/base/0003-*.patch
 ```
 
+## Upstream update check
+
+`tools/check-updates.py` checks every project of the local manifest (plus the patched
+`frameworks/base` and `build/soong`) for new upstream commits and judges whether to merge them.
+It never merges anything: it fetches only when the remote tip moved (shallow clones with a
+limited depth), replays our commits on the new upstream with `git merge-tree`, and writes a
+report to `reports/`:
+
+- **SAFE**: our commits apply cleanly and nothing sensitive changed;
+- **REVIEW**: applies, but upstream touched files we patch or sensitive build files
+  (BoardConfig, init scripts, sepolicy, VINTF manifests, overlays, props);
+- **CONFLICT**: our commits do not apply as they are;
+- **KERNEL-UPDATE**: the oss-dash-kernel sources moved; they are taken as is, never patched here.
+
+It also compares our local manifest with the oss-dash one. `tools/session-start.sh` is a
+Claude Code `SessionStart` hook that runs the check in the background (at most every 6 hours)
+and passes the latest report to the session.
+
+```bash
+python3 tools/check-updates.py --src /path/to/infinity
+```
+
 ## Compatibility
 
 - Generated against Infinity-X 4.2 (`17` branch, `BUILD_ID=CP2A.260605.016`) and the oss-dash
