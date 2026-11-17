@@ -45,8 +45,8 @@ It includes both the prebuilt kernel repo and the Kleaf kernel platform; Infinit
 ## Usage
 
 ```bash
-git clone https://github.com/alesx2io/dash-infinity-fixes
-cd dash-infinity-fixes
+git clone https://github.com/alesx2io/dash-Infinity-X-patches
+cd dash-Infinity-X-patches
 ./apply-patches.sh /path/to/infinity                       # everything
 ./apply-patches.sh /path/to/infinity frameworks/base       # one project
 ```
@@ -56,7 +56,7 @@ with `git am --3way`. You can also apply a single file by hand:
 
 ```bash
 cd /path/to/infinity/frameworks/base
-git am --3way /path/to/dash-infinity-fixes/patches/frameworks/base/0003-*.patch
+git am --3way /path/to/dash-Infinity-X-patches/patches/frameworks/base/0003-*.patch
 ```
 
 ## Compatibility

@@ -1,5 +1,5 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
-From: alesx2io <alesx2io@users.noreply.github.com>
+From: alesx2io <96351978+alesx2io@users.noreply.github.com>
 Date: Sun, 15 Nov 2026 16:04:21 +0100
 Subject: [PATCH] BatteryStatsImpl: ignore implausible time-to-full from HAL
 
