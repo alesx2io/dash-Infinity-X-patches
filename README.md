@@ -25,6 +25,23 @@ and several of them are generic enough for other devices.
 | Lock screen camera | `frameworks/base`, `device/xiaomi/dash` | The lock screen camera shortcut showed a chooser with MiuiCamera twice: the app handles the secure camera intent with `.Camera` and `.AssistantCamera`. | New SystemUI `config_cameraSecureActivity`; the device overlay points it to `com.android.camera/.Camera`. |
 | Build | `build/soong`, `device/xiaomi/dash` | The `mediatek-ims-common` boot jar contains `com.xiaomi.ims` classes; the device tree only had a Lineage product. | Allow `com.xiaomi.ims` in the boot jar package list; add the `infinity_dash` product. |
 
+## Kernel variants
+
+The device tree is kept in two branches with the same fixes:
+
+| Variant | Branch | Kernel |
+|---|---|---|
+| `prebuilt` | `infinity` | Stock HyperOS kernel and modules from `device/xiaomi/dash-kernel` (OS3.0.304.0 global) |
+| `kleaf` | `infinity-kleaf` | Built from source with Kleaf from [oss-dash-kernel](https://github.com/oss-dash-kernel). Experimental: several Xiaomi modules are reverse engineered, see its README |
+
+```bash
+./switch-variant.sh /path/to/infinity prebuilt   # or: kleaf
+```
+
+`manifest/dash.xml` is the local manifest used for these builds (`.repo/local_manifests/dash.xml`).
+It includes both the prebuilt kernel repo and the Kleaf kernel platform; Infinity already excludes
+`kernel/platform` from Soong, so the kernel sources do not affect the prebuilt variant.
+
 ## Usage
 
 ```bash
@@ -46,8 +63,8 @@ git am --3way /path/to/dash-infinity-fixes/patches/frameworks/base/0003-*.patch
 
 - Generated against Infinity-X 4.2 (`17` branch, `BUILD_ID=CP2A.260605.016`) and the oss-dash
   `lineage-24.0` trees as of 2026-11-16.
-- The `device/xiaomi/dash` and `hardware/mediatek` patches also apply cleanly on the oss-dash
-  trees updated on 2026-11-17.
+- Device tree, `hardware/mediatek` and vendor patches are based on the oss-dash trees of
+  2026-11-17 (device tree without the Kleaf commit for the `prebuilt` variant).
 - `0001-dash-add-Infinity-X-product.patch` contains the maintainer name and product
   properties for these builds: adapt it before using it in your own build.
 
