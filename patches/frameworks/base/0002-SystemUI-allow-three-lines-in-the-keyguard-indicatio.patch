@@ -1,0 +1,30 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: alesx2io <alesx2io@users.noreply.github.com>
+Date: Mon, 16 Nov 2026 18:38:10 +0100
+Subject: [PATCH] SystemUI: allow three lines in the keyguard indication text
+
+With LOCKSCREEN_BATTERY_INFO enabled the charging stats are appended on
+a new line. When the charging text itself wraps (e.g. Italian), the
+stats line was the third one and got ellipsized away, so the toggle
+looked ignored.
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+---
+ .../systemui/keyguard/ui/view/KeyguardIndicationArea.kt       | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/packages/SystemUI/src/com/android/systemui/keyguard/ui/view/KeyguardIndicationArea.kt b/packages/SystemUI/src/com/android/systemui/keyguard/ui/view/KeyguardIndicationArea.kt
+index 6748a358f..0b36acc97 100644
+--- a/packages/SystemUI/src/com/android/systemui/keyguard/ui/view/KeyguardIndicationArea.kt
++++ b/packages/SystemUI/src/com/android/systemui/keyguard/ui/view/KeyguardIndicationArea.kt
+@@ -76,7 +76,9 @@ class KeyguardIndicationArea(context: Context, private val attrs: AttributeSet?)
+             setEllipsize(TextUtils.TruncateAt.END)
+             setAlpha(0.8f)
+             setMinHeight(R.dimen.keyguard_indication_text_min_height.dp())
+-            setMaxLines(2)
++            // Charging text can wrap to two lines in some locales; the optional
++            // charging stats line (LOCKSCREEN_BATTERY_INFO) needs a third one.
++            setMaxLines(3)
+             setVisibility(View.GONE)
+ 
+             val padding = R.dimen.keyguard_indication_text_padding.dp()

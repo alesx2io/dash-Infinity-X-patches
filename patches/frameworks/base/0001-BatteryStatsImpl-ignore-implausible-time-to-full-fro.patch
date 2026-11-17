@@ -1,0 +1,22 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: alesx2io <alesx2io@users.noreply.github.com>
+Date: Sun, 15 Nov 2026 16:04:21 +0100
+Subject: [PATCH] BatteryStatsImpl: ignore implausible time-to-full from HAL
+
+---
+ .../java/com/android/server/power/stats/BatteryStatsImpl.java   | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/services/core/java/com/android/server/power/stats/BatteryStatsImpl.java b/services/core/java/com/android/server/power/stats/BatteryStatsImpl.java
+index 2746d50ea..62c0642d9 100644
+--- a/services/core/java/com/android/server/power/stats/BatteryStatsImpl.java
++++ b/services/core/java/com/android/server/power/stats/BatteryStatsImpl.java
+@@ -13598,7 +13598,7 @@ public class BatteryStatsImpl extends BatteryStats {
+             // Not yet working.
+             return -1;
+         }
+-        if (mBatteryTimeToFullSeconds >= 0) {
++        if (mBatteryTimeToFullSeconds >= 0 && mBatteryTimeToFullSeconds <= 24 * 60 * 60) {
+             return mBatteryTimeToFullSeconds * (1000 * 1000); // s to us
+         }
+         // Else use algorithmic approach

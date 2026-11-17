@@ -1,0 +1,76 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: alesx2io <alesx2io@users.noreply.github.com>
+Date: Tue, 17 Nov 2026 14:39:15 +0100
+Subject: [PATCH] SystemUI: allow choosing the lock screen camera activity
+
+Some camera apps expose several activities for the secure camera
+intent (MiuiCamera: .Camera and .AssistantCamera), so the lock screen
+shortcut showed a chooser listing the same app twice.
+
+Add config_cameraSecureActivity: when set to an installed, enabled
+activity, the secure camera intent targets it directly.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ packages/SystemUI/res/values/config.xml       |  5 +++++
+ .../android/systemui/camera/CameraIntents.kt  | 21 +++++++++++++++++++
+ 2 files changed, 26 insertions(+)
+
+diff --git a/packages/SystemUI/res/values/config.xml b/packages/SystemUI/res/values/config.xml
+index b2ea6f578..415ab51b9 100644
+--- a/packages/SystemUI/res/values/config.xml
++++ b/packages/SystemUI/res/values/config.xml
+@@ -718,6 +718,11 @@
+          when the double-press power gesture is used. Ignored if empty. -->
+     <string translatable="false" name="config_cameraGesturePackage"></string>
+ 
++    <!-- Component (package/class) of the camera activity to launch from the lock screen.
++         Use it when the camera app exposes several activities for the secure camera intent,
++         which would otherwise show an app chooser. Ignored if empty, missing or disabled. -->
++    <string translatable="false" name="config_cameraSecureActivity"></string>
++
+     <!-- Whether a transition of ACTIVITY_TYPE_DREAM to the home app should play a home sound
+          effect -->
+     <bool name="config_playHomeSoundAfterDream">false</bool>
+diff --git a/packages/SystemUI/src/com/android/systemui/camera/CameraIntents.kt b/packages/SystemUI/src/com/android/systemui/camera/CameraIntents.kt
+index 113758621..a0e383965 100644
+--- a/packages/SystemUI/src/com/android/systemui/camera/CameraIntents.kt
++++ b/packages/SystemUI/src/com/android/systemui/camera/CameraIntents.kt
+@@ -16,6 +16,7 @@
+ 
+ package com.android.systemui.camera
+ 
++import android.content.ComponentName
+ import android.content.Context
+ import android.content.Intent
+ import android.content.pm.PackageManager
+@@ -57,9 +58,29 @@ class CameraIntents {
+         fun getSecureCameraIntent(context: Context, userId: Int): Intent {
+             val intent = Intent(DEFAULT_SECURE_CAMERA_INTENT_ACTION)
+             getOverrideCameraPackage(context, userId)?.let { intent.setPackage(it) }
++            getSecureCameraComponent(context, userId)?.let { intent.setComponent(it) }
+             return intent.addFlags(Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS)
+         }
+ 
++        /**
++         * Returns the activity configured in config_cameraSecureActivity if it is installed and
++         * enabled, so the lock screen camera opens directly instead of showing a chooser.
++         */
++        @JvmStatic
++        fun getSecureCameraComponent(context: Context, userId: Int): ComponentName? {
++            val flattened = context.resources.getString(R.string.config_cameraSecureActivity)
++            if (TextUtils.isEmpty(flattened)) return null
++            val component = ComponentName.unflattenFromString(flattened) ?: return null
++            return try {
++                val info = context.packageManager.getActivityInfo(
++                        component, PackageManager.ComponentInfoFlags.of(0))
++                if (info.isEnabled && info.applicationInfo.enabled) component else null
++            } catch (e: PackageManager.NameNotFoundException) {
++                Log.w(TAG, "Missing cameraSecureActivity $flattened", e)
++                null
++            }
++        }
++
+         @JvmStatic
+         fun isSecureCameraIntent(intent: Intent?): Boolean {
+             return intent?.getAction()?.equals(DEFAULT_SECURE_CAMERA_INTENT_ACTION) ?: false

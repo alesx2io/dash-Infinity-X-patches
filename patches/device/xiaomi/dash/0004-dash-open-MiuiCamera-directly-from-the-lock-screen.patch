@@ -1,0 +1,28 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: alesx2io <alesx2io@users.noreply.github.com>
+Date: Tue, 17 Nov 2026 14:39:15 +0100
+Subject: [PATCH] dash: open MiuiCamera directly from the lock screen
+
+MiuiCamera handles the secure camera intent with both .Camera and
+.AssistantCamera, so the lock screen shortcut asked which one to use.
+Point SystemUI to com.android.camera/.Camera.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ overlay/DashSystemUIOverlay/res/values/config.xml | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/overlay/DashSystemUIOverlay/res/values/config.xml b/overlay/DashSystemUIOverlay/res/values/config.xml
+index c76a902..53803fc 100644
+--- a/overlay/DashSystemUIOverlay/res/values/config.xml
++++ b/overlay/DashSystemUIOverlay/res/values/config.xml
+@@ -17,4 +17,9 @@
+     <!-- If using proximity_sensor_type, specifies a threshold value to distinguish near and
+          far break points. A sensor value less than this is considered "near". -->
+     <item name="proximity_sensor_threshold" translatable="false" format="float" type="dimen">5</item>
++
++    <!-- MiuiCamera exposes both .Camera and .AssistantCamera for the secure camera intent:
++         open .Camera directly from the lock screen instead of showing a chooser. -->
++    <string name="config_cameraGesturePackage" translatable="false">com.android.camera</string>
++    <string name="config_cameraSecureActivity" translatable="false">com.android.camera/.Camera</string>
+ </resources>

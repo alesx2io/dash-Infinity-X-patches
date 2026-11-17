@@ -1,0 +1,94 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: alesx2io <alesx2io@users.noreply.github.com>
+Date: Mon, 16 Nov 2026 19:03:29 +0100
+Subject: [PATCH] ContentResolver: briefly cache MediaStore canonicalize()
+ results
+
+Google Sound Picker calls canonicalize() for each of its ~450 sounds on
+the main thread at every tap and back navigation. Each call is a
+blocking provider round trip with a full-projection query, freezing the
+UI for 0.7-0.85s.
+
+Reuse answers from the media authority per process: 30s for hits, 2s
+for misses so newly added items are still picked up quickly.
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+---
+ .../java/android/content/ContentResolver.java | 43 +++++++++++++++++++
+ 1 file changed, 43 insertions(+)
+
+diff --git a/core/java/android/content/ContentResolver.java b/core/java/android/content/ContentResolver.java
+index 93900e24a..01da7d120 100644
+--- a/core/java/android/content/ContentResolver.java
++++ b/core/java/android/content/ContentResolver.java
+@@ -75,6 +75,7 @@ import android.system.Int64Ref;
+ import android.text.TextUtils;
+ import android.util.EventLog;
+ import android.util.Log;
++import android.util.LruCache;
+ import android.util.Size;
+ import android.util.SparseArray;
+ 
+@@ -1323,6 +1324,24 @@ public abstract class ContentResolver implements ContentInterface {
+         return (res != null) ? res : uri;
+     }
+ 
++    /** How long a successful MediaStore canonicalize() answer is reused, per process. */
++    private static final long CANONICALIZE_CACHE_TTL_MILLIS = 30 * 1000;
++    /** Misses are kept only briefly so a newly added item is picked up right away. */
++    private static final long CANONICALIZE_CACHE_NULL_TTL_MILLIS = 2 * 1000;
++
++    private static final class CanonicalizeCacheEntry {
++        final Uri result;
++        final long expiresAt;
++
++        CanonicalizeCacheEntry(Uri result, long expiresAt) {
++            this.result = result;
++            this.expiresAt = expiresAt;
++        }
++    }
++
++    private static final LruCache<String, CanonicalizeCacheEntry> sCanonicalizeCache =
++            new LruCache<>(1024);
++
+     /**
+      * Transform the given <var>url</var> to a canonical representation of
+      * its referenced resource, which can be used across devices, persisted,
+@@ -1364,6 +1383,21 @@ public abstract class ContentResolver implements ContentInterface {
+             return null;
+         }
+ 
++        // Sound pickers canonicalize every media item one by one on the main thread, on each
++        // user action. Remember recent MediaStore answers for a short time to avoid hundreds
++        // of blocking provider round trips per tap.
++        final boolean cacheable = "media".equals(url.getAuthority());
++        final String cacheKey = cacheable ? getUserId() + "|" + url : null;
++        if (cacheable) {
++            final long now = SystemClock.elapsedRealtime();
++            synchronized (sCanonicalizeCache) {
++                final CanonicalizeCacheEntry entry = sCanonicalizeCache.get(cacheKey);
++                if (entry != null && now < entry.expiresAt) {
++                    return entry.result;
++                }
++            }
++        }
++
+         IContentProvider provider = acquireProvider(url);
+         if (provider == null) {
+             return null;
+@@ -1377,6 +1411,15 @@ public abstract class ContentResolver implements ContentInterface {
+             if (resultListener.exception != null) {
+                 throw resultListener.exception;
+             }
++            if (cacheable) {
++                final Uri result = resultListener.result;
++                final long ttl = result != null
++                        ? CANONICALIZE_CACHE_TTL_MILLIS : CANONICALIZE_CACHE_NULL_TTL_MILLIS;
++                synchronized (sCanonicalizeCache) {
++                    sCanonicalizeCache.put(cacheKey, new CanonicalizeCacheEntry(
++                            result, SystemClock.elapsedRealtime() + ttl));
++                }
++            }
+             return resultListener.result;
+         } catch (RemoteException e) {
+             // Arbitrary and not worth documenting, as Activity

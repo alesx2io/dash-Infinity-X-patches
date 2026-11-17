@@ -1,0 +1,34 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: alesx2io <alesx2io@users.noreply.github.com>
+Date: Mon, 16 Nov 2026 18:27:48 +0100
+Subject: [PATCH] dash: MinRefreshRateCtrl: keep user values above the 60Hz
+ floor
+
+BootReceiver wrote min_refresh_rate=60 on every BOOT_COMPLETED, so a
+user-selected minimum of 120Hz was reset to 60Hz at each boot.
+
+Only write the floor when the current value is below it.
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+---
+ .../src/org/lineageos/minrefreshrate/BootReceiver.java     | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/packages/MinRefreshRateCtrl/src/org/lineageos/minrefreshrate/BootReceiver.java b/packages/MinRefreshRateCtrl/src/org/lineageos/minrefreshrate/BootReceiver.java
+index 16a5f3f..8bebd7c 100644
+--- a/packages/MinRefreshRateCtrl/src/org/lineageos/minrefreshrate/BootReceiver.java
++++ b/packages/MinRefreshRateCtrl/src/org/lineageos/minrefreshrate/BootReceiver.java
+@@ -20,6 +20,13 @@ public class BootReceiver extends BroadcastReceiver {
+ 
+     static void applyFloor(Context context) {
+         try {
++            // Only raise the value: a user choice above the floor (e.g. 120Hz) must survive boot.
++            float current = Settings.System.getFloat(
++                    context.getContentResolver(), "min_refresh_rate", 0f);
++            if (current >= MIN_REFRESH_RATE_HZ) {
++                Log.i(TAG, "min_refresh_rate is " + current + "Hz, leaving it untouched");
++                return;
++            }
+             boolean applied = Settings.System.putFloat(
+                     context.getContentResolver(),
+                     "min_refresh_rate",

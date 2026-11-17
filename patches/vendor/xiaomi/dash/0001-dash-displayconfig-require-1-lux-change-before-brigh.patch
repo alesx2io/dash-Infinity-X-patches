@@ -1,0 +1,40 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: alesx2io <alesx2io@users.noreply.github.com>
+Date: Mon, 16 Nov 2026 17:23:23 +0100
+Subject: [PATCH] dash: displayconfig: require >1 lux change before brightening
+
+tsl2525_als reports integer lux. Around 0.5 lux the reading toggles
+between 0 and 1, and with a 0.2% brightening threshold (0 at 0 lux)
+every toggle moved the screen between 3.5 and 6.43 nits.
+
+Add a 1 lux minimum to the ambient brightening threshold. Percentages
+keep coming from the framework overlay.
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+---
+ .../display_id_4627039422300187648.xml              | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/proprietary/vendor/etc/displayconfig/display_id_4627039422300187648.xml b/proprietary/vendor/etc/displayconfig/display_id_4627039422300187648.xml
+index 5fee869..fed4272 100644
+--- a/proprietary/vendor/etc/displayconfig/display_id_4627039422300187648.xml
++++ b/proprietary/vendor/etc/displayconfig/display_id_4627039422300187648.xml
+@@ -59,5 +59,18 @@
+     </highBrightnessMode>
+     <ambientLightHorizonLong>1500</ambientLightHorizonLong>
+     <ambientLightHorizonShort>1000</ambientLightHorizonShort>
++    <!-- tsl2525_als reports integer lux: require more than 1 lux of change before
++         brightening, so a reading that toggles between N and N+1 does not move the screen.
++         Percentages still come from config_ambientBrighteningThresholds. -->
++    <ambientBrightnessChangeThresholds>
++        <brighteningThresholds>
++            <minimum>1</minimum>
++        </brighteningThresholds>
++    </ambientBrightnessChangeThresholds>
++    <ambientBrightnessChangeThresholdsIdle>
++        <brighteningThresholds>
++            <minimum>1</minimum>
++        </brighteningThresholds>
++    </ambientBrightnessChangeThresholdsIdle>
+ </displayConfiguration>
+ <!-- END Adapt_MIUIAdaptFrame -->

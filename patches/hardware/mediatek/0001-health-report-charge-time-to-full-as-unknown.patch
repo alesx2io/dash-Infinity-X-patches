@@ -1,0 +1,53 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: alesx2io <alesx2io@users.noreply.github.com>
+Date: Mon, 16 Nov 2026 18:36:46 +0100
+Subject: [PATCH] health: report charge time to full as unknown
+
+The Xiaomi battery driver on dash fills time_to_full_now with a
+capacity-derived number (missing levels * 75200 or 150400), not seconds.
+The framework showed "Full in 45 days" on the lock screen.
+
+Report -1 so BatteryStats falls back to its charge step estimate.
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+---
+ aidl/health/Health.cpp | 19 ++++++++++++++++++-
+ 1 file changed, 18 insertions(+), 1 deletion(-)
+
+diff --git a/aidl/health/Health.cpp b/aidl/health/Health.cpp
+index 1d8ebb5..432cd51 100644
+--- a/aidl/health/Health.cpp
++++ b/aidl/health/Health.cpp
+@@ -26,6 +26,23 @@ using aidl::android::hardware::health::charger::ChargerCallback;
+ using aidl::android::hardware::health::charger::ChargerModeMain;
+ #endif
+ 
++namespace aidl::android::hardware::health {
++class HealthImpl : public Health {
++  public:
++    using Health::Health;
++
++  protected:
++    // The Xiaomi battery driver fills time_to_full_now with a capacity-derived
++    // number (missing levels * 75200 or 150400), not seconds. Report it as
++    // unknown so the framework falls back to its own charge step estimate.
++    void UpdateHealthInfo(HealthInfo* health_info) override {
++        health_info->batteryChargeTimeToFullNowSeconds = -1;
++    }
++};
++}  // namespace aidl::android::hardware::health
++
++using aidl::android::hardware::health::HealthImpl;
++
+ static constexpr const char* gInstanceName = "default";
+ static constexpr std::string_view gChargerArg{"--charger"};
+ 
+@@ -47,7 +64,7 @@ int main(int argc, char** argv) {
+     // make a default health service
+     auto config = std::make_unique<healthd_config>();
+     ::android::hardware::health::InitHealthdConfig(config.get());
+-    auto binder = ndk::SharedRefBase::make<Health>(gInstanceName, std::move(config));
++    auto binder = ndk::SharedRefBase::make<HealthImpl>(gInstanceName, std::move(config));
+ 
+     if (argc >= 2 && argv[1] == gChargerArg) {
+ #if !CHARGER_FORCE_NO_UI
