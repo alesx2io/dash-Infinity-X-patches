@@ -92,16 +92,19 @@ python3 tools/check-updates.py --src /path/to/infinity
 - `0001-dash-add-Infinity-X-product.patch` contains the maintainer name and product
   properties for these builds: adapt it before using it in your own build.
 
-## Known limitations
+## Known issues and workarounds
 
-- **Auto brightness oscillation with the slider at max in the dark.** The Xiaomi compensation of
-  the under-display sensor subtracts too much when the screen is very bright (around 0.48 of
-  max brightness it reads 0 lux), which can start a short brightness loop. Not fixed yet;
-  workaround: one-shot auto brightness or manual brightness.
-- The sound picker cache shortens repeated freezes but the first load of each screen is still
-  slow: the root cause is in the closed-source Google app.
-- Pinning Settings Services means the Play Store keeps offering its update, which fails. This is
-  intended.
+| Issue | Cause | Workaround |
+|---|---|---|
+| Auto brightness can briefly oscillate with the slider at max in a dark room | The Xiaomi compensation of the under-display light sensor subtracts too much when the screen is very bright (around half brightness it already reads 0 lux), which starts a short brightness loop. The slower ramps make it softer but do not remove it. | Use one-shot auto brightness or manual brightness, or avoid pushing the slider to max in the dark. |
+| Blurred rectangle on the lock screen right after closing the shade | Lock screen "translucent notifications" (Infinity setting): the blur region of the notification background stays on screen for ~300 ms after the row is tucked away. | Turn off *Notifications → Translucent notifications on lock screen*. |
+| Black frame when closing the shade on the lock screen, notifications appearing late when opening the shade by tapping the icon pill | Compact lock screen notifications (icon pill) together with a secure lock screen. | Use the full list of notifications on the lock screen (*Notifications on lock screen → show all*) instead of the compact pill. |
+| Screen flickering with max refresh rate 120 Hz and min 60 Hz | Not investigated yet. | Set both minimum and maximum refresh rate to 120 Hz. |
+| Settings search finds almost nothing after a dirty flash | Settings Services marks its index as up to date for the new build even when indexing ran before unlock and stored nothing. | *Settings → Apps → Settings Services → Storage → Clear data*, then open the search again: it re-indexes everything. |
+| Play Store keeps offering an update for Settings Services, which fails | Intended: the newer version only indexes Pixel Settings and breaks Settings search. | Ignore it. |
+| Ringtone, message and alarm sounds cannot be selected | Not the ROM: the *Hide vendor sepolicy* option of the susfs4ksu root module breaks `vold_prepare_subdirs`, so user storage is never marked as ready. | Turn off *Hide vendor sepolicy* in the susfs4ksu WebUI and reboot. |
+| Boot fails after flashing | The *Apple Fonts & Emoji* root module deletes `/data/fonts`, which the system then recreates without encryption. | Remove that module before flashing. |
+| Sound picker still slow on the first load of each screen | The repeated freezes are reduced by the canonicalize() cache, but the root cause is in the closed-source Google app. | None. |
 
 ## License
 
