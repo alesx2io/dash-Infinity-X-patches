@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: alesx2io <96351978+alesx2io@users.noreply.github.com>
 Date: Mon, 16 Nov 2026 18:56:55 +0100
-Subject: [PATCH] dash: use 30 media volume steps
+Subject: [PATCH 2/3] dash: use 30 media volume steps
 
 The vendor audio config declares 30 media steps
 (ro.vendor.audio.media.volume.steps) and a default of 20, but the
@@ -17,7 +17,7 @@ Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
  2 files changed, 5 insertions(+)
 
 diff --git a/overlay/DashFrameworksOverlay/res/values/config.xml b/overlay/DashFrameworksOverlay/res/values/config.xml
-index 5009a81..ccce584 100644
+index 1f8e6e5..0189185 100644
 --- a/overlay/DashFrameworksOverlay/res/values/config.xml
 +++ b/overlay/DashFrameworksOverlay/res/values/config.xml
 @@ -764,4 +764,8 @@
@@ -41,3 +41,6 @@ index 5461379..6cdd022 100644
  ro.config.vc_call_vol_default=6
  ro.config.vc_call_vol_steps=7
  ro.vendor.audio.camera_gain=true
+-- 
+2.56.1
+

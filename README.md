@@ -17,10 +17,10 @@ and several of them are generic enough for other devices.
 |---|---|---|---|
 | Charging time | `frameworks/base`, `hardware/mediatek` | Lock screen showed "Full in 45 days". The Xiaomi battery driver fills `time_to_full_now` with a capacity-derived number (missing levels × 75200 or 150400), not seconds. | The MediaTek health HAL reports the value as unknown, and `BatteryStatsImpl` ignores anything above 24 h, so the framework uses its own charge-step estimate. |
 | Charging stats | `frameworks/base` | The lock screen "Charging stats" toggle looked ignored: the stats line is appended as a third line and the indication text allowed only two. | Keyguard indication text allows three lines. |
-| Auto brightness | `vendor/xiaomi/dash` | In dim light the under-display sensor (`tsl2525_als`) reports integer lux toggling 0 ↔ 1, and the brightening threshold at 0 lux is 0, so the screen jumped between 3.5 and 6.4 nits every few seconds. | Display config requires more than 1 lux of change before brightening. |
-| Brightness ramps | `vendor/xiaomi/dash` | Auto brightness jumped instead of fading: without per-display ramps the framework used `config_brightness_ramp_rate_*`, which the overlay sets above the 0-255 scale, so every ramp was clamped to 1.0/s. | Display config ramps: auto 0.15/s up and 0.10/s down (max 2 s / 3 s), manual 0.6/s up and 0.5/s down. |
+| Auto brightness | `vendor/xiaomi/dash` (merged in oss-dash) | In dim light the under-display sensor (`tsl2525_als`) reports integer lux toggling 0 ↔ 1, and the brightening threshold at 0 lux is 0, so the screen jumped between 3.5 and 6.4 nits every few seconds. | Display config requires more than 1 lux of change before brightening. |
+| Brightness ramps | `vendor/xiaomi/dash` (merged in oss-dash) | Auto brightness jumped instead of fading: without per-display ramps the framework used `config_brightness_ramp_rate_*`, which the overlay sets above the 0-255 scale, so every ramp was clamped to 1.0/s. | Display config ramps: auto 0.15/s up and 0.10/s down (max 2 s / 3 s), manual 0.6/s up and 0.5/s down. |
+| Custom fingerprint icon | `frameworks/base` | The fingerprint icon picked in the Infinity settings was used only on the lock screen: on AOD, notification pulses and the first frames of a wake-up the stock fingerprint animation was shown. | The AOD fingerprint state uses the custom icon too. |
 | Notification wake | `frameworks/base` | With the screen off, a notification started a doze pulse: the display came on at minimum brightness and the lock screen faded in from black, which looked like a dark frame followed by a jump in brightness. | Notifications wake the device like the power button (normal screen-on transition and auto brightness), after the same pocket check. Still controlled by *Wake screen for notifications*. |
-| Min refresh rate | `device/xiaomi/dash` | A minimum refresh rate of 120 Hz went back to 60 Hz after each boot: `MinRefreshRateCtrl` wrote 60 Hz unconditionally on `BOOT_COMPLETED`. | The 60 Hz floor is written only when the current value is lower. |
 | Volume | `device/xiaomi/dash` | The vendor audio config declares 30 media steps and a default of 20, but the framework used 15, so each step was twice as large and the lowest step louder than stock. | 30 media volume steps, safe headphone index scaled to 20/30. |
 | Settings search | `frameworks/base` | Settings search returned almost nothing: Settings Services updated from the Play Store only indexes Pixel Settings (0 entries vs 1952 with the bundled version). | New `config_pinnedSystemPackages`: updates to listed system packages are rejected unless they come from adb or root. Settings Services is pinned to the bundled build. |
 | Sound picker lag | `frameworks/base` | Google Sound Picker calls `ContentResolver.canonicalize()` for ~450 sounds on the main thread at every tap, freezing the UI for 0.7–0.85 s. | `canonicalize()` answers for the `media` authority are cached per process (30 s for hits, 2 s for misses). |
@@ -87,8 +87,11 @@ python3 tools/check-updates.py --src /path/to/infinity
 
 - Generated against Infinity-X 4.2 (`17` branch, `BUILD_ID=CP2A.260605.016`) and the oss-dash
   `lineage-24.0` trees as of 2026-11-16.
-- Device tree, `hardware/mediatek` and vendor patches are based on the oss-dash trees of
-  2026-11-17 (device tree without the Kleaf commit for the `prebuilt` variant).
+- Device tree and `hardware/mediatek` patches are based on the oss-dash trees of 2026-11-19
+  (device tree without the Kleaf commit for the `prebuilt` variant).
+- The auto brightness threshold and brightness ramp fixes, first made here, are now part of
+  oss-dash (`vendor/xiaomi/dash` and `extract-files.py`), so they are no longer shipped as
+  patches. oss-dash also fixed the minimum refresh rate reset after boot in the same way.
 - `0001-dash-add-Infinity-X-product.patch` contains the maintainer name and product
   properties for these builds: adapt it before using it in your own build.
 

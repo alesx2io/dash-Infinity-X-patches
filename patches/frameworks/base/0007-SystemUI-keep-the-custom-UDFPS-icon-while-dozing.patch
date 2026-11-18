@@ -1,0 +1,67 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: alesx2io <96351978+alesx2io@users.noreply.github.com>
+Date: Wed, 18 Nov 2026 19:54:56 +0100
+Subject: [PATCH] SystemUI: keep the custom UDFPS icon while dozing
+
+The device entry icon used the custom fingerprint icon picked in the
+Infinity settings only for the lock screen state. The AOD state (AOD,
+notification pulses and the first frames of a wake-up) always showed the
+stock Lottie fingerprint, so the icon switched between the two.
+
+Use a second custom icon drawable for the AOD fingerprint state when a
+custom icon is selected. A drawable cannot be the child of two states,
+hence the separate instance.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../keyguard/ui/view/DeviceEntryIconView.kt   | 26 ++++++++++++++-----
+ 1 file changed, 19 insertions(+), 7 deletions(-)
+
+diff --git a/packages/SystemUI/src/com/android/systemui/keyguard/ui/view/DeviceEntryIconView.kt b/packages/SystemUI/src/com/android/systemui/keyguard/ui/view/DeviceEntryIconView.kt
+index fe8853dec..650f19caa 100644
+--- a/packages/SystemUI/src/com/android/systemui/keyguard/ui/view/DeviceEntryIconView.kt
++++ b/packages/SystemUI/src/com/android/systemui/keyguard/ui/view/DeviceEntryIconView.kt
+@@ -75,6 +75,8 @@ constructor(
+             "system:" + Settings.System.UDFPS_ICON
+ 
+     private val fingerprintDrawable: UdfpsIconDrawable = UdfpsFpIconDrawable(context)
++    // A drawable can only be the child of one state, so AOD gets its own instance.
++    private val aodFingerprintDrawable: UdfpsIconDrawable = UdfpsFpIconDrawable(context)
+ 
+     private val packageInstalled = com.android.internal.util.infinity.Utils.isPackageInstalled(
+         context, "com.infinity.udfps.icons"
+@@ -189,14 +191,24 @@ constructor(
+             R.id.unlocked_aod,
+         )
+         // FINGERPRINT
+-        LottieCompositionFactory.fromRawRes(mContext, R.raw.udfps_aod_fp).addListener { result ->
+-            aodFpDrawable.setComposition(result)
++        if (customUdfpsIcon) {
++            // Keep the custom icon while dozing too (AOD, notification pulses, wake-up).
++            aodFingerprintDrawable.setBounds(0, 0, bgView.width, bgView.height)
++            animatedIconDrawable.addState(
++                getIconState(IconType.FINGERPRINT, true),
++                aodFingerprintDrawable,
++                R.id.udfps_aod_fp,
++            )
++        } else {
++            LottieCompositionFactory.fromRawRes(mContext, R.raw.udfps_aod_fp).addListener {
++                result -> aodFpDrawable.setComposition(result)
++            }
++            animatedIconDrawable.addState(
++                getIconState(IconType.FINGERPRINT, true),
++                aodFpDrawable,
++                R.id.udfps_aod_fp,
++            )
+         }
+-        animatedIconDrawable.addState(
+-            getIconState(IconType.FINGERPRINT, true),
+-            aodFpDrawable,
+-            R.id.udfps_aod_fp,
+-        )
+ 
+         // WILDCARD: should always be the last state added since any states will match with this
+         // and therefore won't get matched with subsequent states.
+-- 
+2.56.1
+
