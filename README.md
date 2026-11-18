@@ -7,6 +7,9 @@ Each fix is a plain `git format-patch` file, grouped by the AOSP/Infinity projec
 They are small and self-contained, so they can be picked one by one for other ROMs on `dash`,
 and several of them are generic enough for other devices.
 
+> **About these fixes:** they were developed with the help of AI (Claude), but every fix was
+> built, flashed and tested by a human on a real POCO X8 Pro Max before being published here.
+
 - ROM builds: <https://sourceforge.net/projects/dash-roms/>
 - Device tree, kernel and hardware: [oss-dash](https://github.com/oss-dash) ([local manifests](https://github.com/oss-dash/android_local_manifests))
 - ROM: [ProjectInfinity-X](https://github.com/ProjectInfinity-X)
