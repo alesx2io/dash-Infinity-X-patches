@@ -1,0 +1,101 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: alesx2io <96351978+alesx2io@users.noreply.github.com>
+Date: Wed, 18 Nov 2026 13:09:52 +0100
+Subject: [PATCH] SystemUI: wake the device for notifications instead of
+ pulsing
+
+With the screen off, an alerting notification started a doze pulse: the
+display came on at minimum brightness and the lock screen faded in from
+black, which looked like a dark frame followed by a jump in brightness.
+
+Wake the device instead, after the same proximity (pocket) check, so the
+lock screen uses the normal screen-on transition and auto brightness, like
+pressing the power button. The wake uses WAKE_REASON_APPLICATION, the same
+reason SystemUI uses for full screen intents. Notifications are still
+gated by the "wake screen for notifications" ambient display setting.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../src/com/android/systemui/doze/DozeLog.java     |  3 +++
+ .../com/android/systemui/doze/DozeTriggers.java    | 14 ++++++++++++++
+ .../android/systemui/doze/DozeTriggersTest.java    |  5 ++++-
+ 3 files changed, 21 insertions(+), 1 deletion(-)
+
+diff --git a/packages/SystemUI/src/com/android/systemui/doze/DozeLog.java b/packages/SystemUI/src/com/android/systemui/doze/DozeLog.java
+index 354ff7e03..56754fdf3 100644
+--- a/packages/SystemUI/src/com/android/systemui/doze/DozeLog.java
++++ b/packages/SystemUI/src/com/android/systemui/doze/DozeLog.java
+@@ -16,6 +16,7 @@
+ 
+ package com.android.systemui.doze;
+ 
++import static android.os.PowerManager.WAKE_REASON_APPLICATION;
+ import static android.os.PowerManager.WAKE_REASON_BIOMETRIC;
+ import static android.os.PowerManager.WAKE_REASON_GESTURE;
+ import static android.os.PowerManager.WAKE_REASON_LIFT;
+@@ -575,6 +576,8 @@ public class DozeLog implements Dumpable {
+                 return WAKE_REASON_PLUGGED_IN;
+             case PULSE_REASON_MINMODE:
+                 return WAKE_REASON_POWER_BUTTON;
++            case PULSE_REASON_NOTIFICATION:
++                return WAKE_REASON_APPLICATION;
+             default:
+                 return WAKE_REASON_GESTURE;
+         }
+diff --git a/packages/SystemUI/src/com/android/systemui/doze/DozeTriggers.java b/packages/SystemUI/src/com/android/systemui/doze/DozeTriggers.java
+index a3137adbc..b56c76172 100644
+--- a/packages/SystemUI/src/com/android/systemui/doze/DozeTriggers.java
++++ b/packages/SystemUI/src/com/android/systemui/doze/DozeTriggers.java
+@@ -424,6 +424,14 @@ public class DozeTriggers implements DozeMachine.Part {
+         mMachine.wakeUp(reason);
+     }
+ 
++    private void wakeUpForNotification() {
++        if (mDozeParameters.getDisplayNeedsBlanking()) {
++            // Cover the hardware wake-up sequence, where the display is black for a few frames.
++            mDozeHost.setAodDimmingScrim(1f);
++        }
++        mMachine.wakeUp(DozeLog.PULSE_REASON_NOTIFICATION);
++    }
++
+     private void onProximityFar(boolean far) {
+         // Proximity checks are asynchronous and the user might have interacted with the phone
+         // when a new event is arriving. This means that a state transition might have happened
+@@ -692,6 +700,12 @@ public class DozeTriggers implements DozeMachine.Part {
+                     return;
+                 }
+ 
++                if (reason == DozeLog.PULSE_REASON_NOTIFICATION) {
++                    // Wake the device like the power button does instead of pulsing, so the
++                    // lock screen uses the normal screen-on transition and brightness.
++                    wakeUpForNotification();
++                    return;
++                }
+                 mMachine.requestPulse(reason);
+             }
+         }, !mDozeParameters.getProxCheckBeforePulse() || performedProxCheck, reason);
+diff --git a/packages/SystemUI/tests/src/com/android/systemui/doze/DozeTriggersTest.java b/packages/SystemUI/tests/src/com/android/systemui/doze/DozeTriggersTest.java
+index a8f1ce694..b1d04d7e7 100644
+--- a/packages/SystemUI/tests/src/com/android/systemui/doze/DozeTriggersTest.java
++++ b/packages/SystemUI/tests/src/com/android/systemui/doze/DozeTriggersTest.java
+@@ -175,13 +175,16 @@ public class DozeTriggersTest extends SysuiTestCase {
+ 
+         verify(mMachine, never()).requestState(any());
+         verify(mMachine, never()).requestPulse(anyInt());
++        verify(mMachine, never()).wakeUp(anyInt());
+ 
+         mProximitySensor.setLastEvent(new ThresholdSensorEvent(false, 2));
+         mProximitySensor.alertListeners();
+         waitForSensorManager();
+         captor.getValue().onNotificationAlerted(null /* pulseSuppressedListener */);
+ 
+-        verify(mMachine).requestPulse(anyInt());
++        // Notifications wake the device instead of pulsing.
++        verify(mMachine, never()).requestPulse(anyInt());
++        verify(mMachine).wakeUp(DozeLog.PULSE_REASON_NOTIFICATION);
+     }
+ 
+     @Test
+-- 
+2.56.1
+
