@@ -104,7 +104,6 @@ python3 tools/check-updates.py --src /path/to/infinity
 
 | Issue | Cause | Workaround |
 |---|---|---|
-| Auto brightness may briefly oscillate with the slider at max in a dark room | The Xiaomi compensation of the under-display light sensor subtracts too much when the screen is very bright (around half brightness it already reads 0 lux), which starts a short brightness loop. The slower ramps make it softer but do not remove it. | Use one-shot auto brightness or manual brightness, or avoid pushing the slider to max in the dark. |
 | Blurred rectangle on the lock screen right after closing the shade | Lock screen "translucent notifications" (Infinity setting): the blur region of the notification background stays on screen for ~300 ms after the row is tucked away. | Turn off *Notifications → Translucent notifications on lock screen*. |
 | Compact lock screen notifications have broken animations: black frame when closing the shade, notifications appearing late when opening the shade by tapping the icon pill | Animation bug of the compact lock screen notifications (icon pill) with a secure lock screen. Not fixed. | Use the full list of notifications on the lock screen (*Notifications on lock screen → show all*) instead of the compact pill. |
 | Screen flickering may occur with max refresh rate 120 Hz and min 60 Hz | Not investigated yet. | Set both minimum and maximum refresh rate to 120 Hz. |
