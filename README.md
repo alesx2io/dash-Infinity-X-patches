@@ -32,6 +32,36 @@ and several of them are generic enough for other devices.
 | Lock screen camera | `frameworks/base`, `device/xiaomi/dash` | The lock screen camera shortcut showed a chooser with MiuiCamera twice: the app handles the secure camera intent with `.Camera` and `.AssistantCamera`. | New SystemUI `config_cameraSecureActivity`; the device overlay points it to `com.android.camera/.Camera`. |
 | Build | `build/soong`, `device/xiaomi/dash` | The `mediatek-ims-common` boot jar contains `com.xiaomi.ims` classes; the device tree only had a Lineage product. | Allow `com.xiaomi.ims` in the boot jar package list; add the `infinity_dash` product. |
 
+## Repositories
+
+The device side of the tree comes from forks of the oss-dash repositories, with our fixes
+committed directly in them. `manifest/dash.xml` (copy it to `.repo/local_manifests/`) points
+`repo sync` to these forks:
+
+| Path | Fork | Branch | Upstream |
+|---|---|---|---|
+| `device/xiaomi/dash` | [alesx2io/android_device_xiaomi_dash](https://github.com/alesx2io/android_device_xiaomi_dash) | `infinity` (prebuilt kernel), `infinity-kleaf` | oss-dash |
+| `hardware/mediatek` | [alesx2io/android_hardware_mediatek](https://github.com/alesx2io/android_hardware_mediatek) | `infinity` | oss-dash |
+| `device/xiaomi/dash-miuicamera`, `device/xiaomi/dash-kernel`, `hardware/xiaomi`, `device/mediatek/sepolicy_vndr`, `packages/apps/LunarisDolby`, `vendor/qcom/opensource/vibrator` | `github.com/alesx2io/<same name>` | `lineage-24.0` (mirror) | oss-dash |
+| `vendor/xiaomi/dash`, `vendor/xiaomi/dash-miuicamera` (blobs, Git LFS) | `gitlab.com/alesx2io/<same name>` | `lineage-24.0` (mirror) | oss-dash (GitLab) |
+| `kernel/platform/kernel-6.6/*` (Kleaf variant only) | `github.com/alesx2io/android_kernel*` | `lineage-24.0` (mirror, never patched) | oss-dash-kernel |
+
+Infinity-X itself (`frameworks/base`, `build/soong`) is not forked: its fixes stay as patches in
+`patches/` and are applied with `apply-patches.sh`. The device patches in `patches/` are kept as
+well, generated from the fork branches, for people building other ROMs.
+
+```bash
+# new tree: Infinity-X repo init as usual, then
+cp manifest/dash.xml /path/to/infinity/.repo/local_manifests/dash.xml
+repo sync -c --no-tags
+./apply-patches.sh /path/to/infinity frameworks/base build/soong
+```
+
+`tools/sync-forks.sh` brings the mirror forks to the current oss-dash branches (GitHub forks
+server side with `gh repo sync`, GitLab forks over SSH). Fork branches with our fixes are never
+rebased automatically: rebase them after reviewing the update report, then run
+`tools/sync-forks.sh --push-ours`. Commits are pushed only with the GitHub noreply address.
+
 ## Kernel variants
 
 The device tree is kept in two branches with the same fixes:
@@ -45,8 +75,7 @@ The device tree is kept in two branches with the same fixes:
 ./switch-variant.sh /path/to/infinity prebuilt   # or: kleaf
 ```
 
-`manifest/dash.xml` is the local manifest used for these builds (`.repo/local_manifests/dash.xml`).
-It includes both the prebuilt kernel repo and the Kleaf kernel platform; Infinity already excludes
+`manifest/dash.xml` includes both the prebuilt kernel repo and the Kleaf kernel platform; Infinity already excludes
 `kernel/platform` from Soong, so the kernel sources do not affect the prebuilt variant.
 
 ## Usage
@@ -70,6 +99,8 @@ git am --3way /path/to/dash-Infinity-X-patches/patches/frameworks/base/0003-*.pa
 
 `tools/check-updates.py` checks every project of the local manifest (plus the patched
 `frameworks/base` and `build/soong`) for new upstream commits and judges whether to merge them.
+Forked projects are compared with the original oss-dash repositories, and the report says when a
+mirror fork fell behind.
 It never merges anything: it fetches only when the remote tip moved (shallow clones with a
 limited depth), replays our commits on the new upstream with `git merge-tree`, and writes a
 report to `reports/`:

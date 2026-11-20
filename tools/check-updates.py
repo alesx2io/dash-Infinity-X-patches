@@ -34,6 +34,9 @@ RISKY = re.compile(
     r"overlay/.*/config\.xml|vendor\.prop|system\.prop)"
 )
 UPSTREAM_MANIFEST = "https://github.com/oss-dash/android_local_manifests"
+# Our fork remotes (local manifest) -> remote of the original oss-dash repository.
+FORK_REMOTES = {"dash": "ossgh", "dashgl": "ossgl"}
+FORK_UPSTREAM_BRANCH = "lineage-24.0"
 LFS_OFF = ["-c", "filter.lfs.smudge=", "-c", "filter.lfs.process=", "-c", "filter.lfs.required=false",
            "-c", "filter.lfs.clean="]
 
@@ -66,13 +69,28 @@ def local_manifest_projects(src):
 
 
 def upstream_ref(path):
-    """remote/branch that the manifest revision follows, or None for pinned SHAs."""
+    """remote/branch of the real upstream, or None for pinned SHAs.
+
+    Projects that come from our forks (remotes in FORK_REMOTES) are compared with the
+    oss-dash repository they were forked from, not with the fork itself.
+    """
     r = git(path, "symbolic-ref", "refs/remotes/m/17")
     if r.returncode != 0:
         return None, None
     ref = r.stdout.strip().removeprefix("refs/remotes/")
     remote, _, branch = ref.partition("/")
+    if remote in FORK_REMOTES:
+        return FORK_REMOTES[remote], FORK_UPSTREAM_BRANCH
     return remote, branch
+
+
+def fork_ref(path):
+    """remote/branch of our fork that the manifest follows, or (None, None)."""
+    r = git(path, "symbolic-ref", "refs/remotes/m/17")
+    if r.returncode != 0:
+        return None, None
+    remote, _, branch = r.stdout.strip().removeprefix("refs/remotes/").partition("/")
+    return (remote, branch) if remote in FORK_REMOTES else (None, None)
 
 
 def test_apply(path, new, commits):
@@ -133,6 +151,15 @@ def check_project(src, path, do_fetch):
             return res
     new = out(full, "rev-parse", tracking)
     res["old"], res["new"] = old[:9], new[:9]
+
+    # Unmodified forks only mirror upstream: tell when they fell behind it.
+    fremote, fbranch = fork_ref(full)
+    if fremote and fbranch == FORK_UPSTREAM_BRANCH and do_fetch is not None:
+        r = git(full, "ls-remote", fremote, f"refs/heads/{fbranch}")
+        tip = r.stdout.split()[0] if r.returncode == 0 and r.stdout.strip() else ""
+        if tip and tip != new:
+            res["notes"].append(f"our fork ({fremote}/{fbranch} at {tip[:9]}) is behind upstream "
+                                f"{new[:9]}: sync it with tools/sync-forks.sh")
 
     # Our work: commits on the local branches that upstream (old) does not have.
     branches = LOCAL_BRANCHES.get(path, ["infinity"])
@@ -212,7 +239,9 @@ def manifest_drift(src, tmpdir):
         "last": last,
         "added": sorted(p for p in up if p not in ours),
         "removed": sorted(p for p in ours if p not in up),
-        "renamed": sorted(p for p in up if p in ours and up[p] != ours[p]),
+        # Our forks keep the upstream repository name under another owner: compare basenames.
+        "renamed": sorted(p for p in up if p in ours
+                          and up[p].rsplit("/", 1)[-1] != ours[p].rsplit("/", 1)[-1]),
     }
 
 
