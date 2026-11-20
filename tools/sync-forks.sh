@@ -63,10 +63,14 @@ vendor/xiaomi/dash-miuicamera proprietary_vendor_xiaomi_dash-miuicamera ossgl
 "
 
 clean_range() {  # repo, range -> 0 if no commit in range carries one of our private addresses
-    # Private addresses come from the local git config (or DASH_PRIVATE_EMAILS), never from this file.
+    # Private addresses come from DASH_PRIVATE_EMAILS or ~/.config/dash/private-emails (one per
+    # line, kept outside the repository), never from this file.
     local priv addr
-    priv="${DASH_PRIVATE_EMAILS:-$(git config --global user.email 2>/dev/null; \
-        distrobox enter aosp -- git config --global user.email 2>/dev/null </dev/null)}"
+    priv="${DASH_PRIVATE_EMAILS:-$(cat "$HOME/.config/dash/private-emails" 2>/dev/null)}"
+    if [ -z "$priv" ]; then
+        echo "no private address list (~/.config/dash/private-emails): refusing to push" >&2
+        return 1
+    fi
     for addr in $priv; do
         [ "$addr" = "$NOREPLY" ] && continue
         if git -C "$1" log --format='%ae%n%ce' "$2" 2>/dev/null | grep -qixF "$addr"; then
