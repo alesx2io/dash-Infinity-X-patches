@@ -4,7 +4,8 @@
 #   tools/sync-forks.sh [--src /path/to/tree]               mirror forks: bring them to upstream
 #   tools/sync-forks.sh [--src /path/to/tree] --push-ours   also push our fix branches (after a rebase)
 #
-# - GitHub forks that only mirror upstream: server-side "gh repo sync" (nothing is uploaded).
+# - GitHub forks that only mirror upstream: $BRANCH set to the upstream commit server side
+#   (nothing is uploaded; never a merge, so rewritten upstream history is followed).
 # - GitLab forks (vendor blobs, Git LFS): push the fetched upstream branch over SSH. Needs the
 #   ssh-agent with the key loaded (see README) and must run where git-lfs is installed.
 # - Forks with our fixes (branches infinity / infinity-kleaf) are never rebased here: review the
@@ -82,18 +83,34 @@ clean_range() {  # repo, range -> 0 if no commit in range carries one of our pri
     return 0
 }
 
-echo "== GitHub mirror forks (server-side sync of $BRANCH)"
+mirror_branch() {  # github-fork-name -> make $BRANCH of the fork identical to the parent's
+    # Never merges: when upstream rewrote its history, a merge would keep the old commits
+    # in the fork. The fork branch is set to the upstream commit instead (fork networks share
+    # objects, so nothing is uploaded). Only for branches that never carry our commits.
+    local up sha st
+    up=$(gh api "repos/$GH_USER/$1" --jq .parent.full_name 2>/dev/null) || { echo "FAILED: no parent"; return; }
+    sha=$(gh api "repos/$up/branches/$BRANCH" --jq .commit.sha 2>/dev/null) || { echo "FAILED: $up has no $BRANCH"; return; }
+    st=$(gh api "repos/$up/compare/$BRANCH...$GH_USER:$BRANCH" --jq .status 2>/dev/null)
+    if [ "$st" = identical ]; then echo "ok (${sha:0:9})"; return; fi
+    if gh api -X PATCH "repos/$GH_USER/$1/git/refs/heads/$BRANCH" -f sha="$sha" -F force=true >/dev/null 2>&1; then
+        echo "updated ($st -> ${sha:0:9})"
+    else
+        echo "FAILED to update $BRANCH"
+    fi
+}
+
+echo "== GitHub mirror forks (server side: $BRANCH set to upstream)"
 while read -r p n; do
     [ -n "$p" ] || continue
     printf '%-60s ' "$n"
-    if r=$(gh repo sync "$GH_USER/$n" --branch "$BRANCH" </dev/null 2>&1); then echo "ok"; else echo "FAILED: $(echo "$r" | tail -1)"; fi
+    mirror_branch "$n"
 done <<< "$GH_MIRRORS"
 
 echo "== GitHub forks with our fixes: upstream branch $BRANCH"
 while read -r p n _; do
     [ -n "$p" ] || continue
     printf '%-60s ' "$n"
-    if r=$(gh repo sync "$GH_USER/$n" --branch "$BRANCH" </dev/null 2>&1); then echo "ok"; else echo "FAILED: $(echo "$r" | tail -1)"; fi
+    mirror_branch "$n"
 done <<< "$GH_OURS"
 
 echo "== GitLab forks (push of the fetched upstream $BRANCH over SSH)"
@@ -104,7 +121,7 @@ else
         [ -n "$p" ] || continue
         printf '%-60s ' "$n"
         "${GIT_LFS[@]}" -C "$SRC/$p" fetch -q "$up" "+refs/heads/$BRANCH:refs/remotes/$up/$BRANCH" </dev/null 2>&1 | tail -1
-        if r=$("${GIT_LFS[@]}" -C "$SRC/$p" push -q "git@gitlab.com:$GL_USER/$n.git" \
+        if r=$("${GIT_LFS[@]}" -C "$SRC/$p" push -q --force "git@gitlab.com:$GL_USER/$n.git" \
                    "refs/remotes/$up/$BRANCH:refs/heads/$BRANCH" </dev/null 2>&1); then
             echo "ok ($(git -C "$SRC/$p" rev-parse --short "refs/remotes/$up/$BRANCH"))"
         else
