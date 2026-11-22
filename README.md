@@ -16,21 +16,33 @@ and several of them are generic enough for other devices.
 
 ## Fixes
 
-| Area | Project | Problem | Fix |
-|---|---|---|---|
-| Charging time | `frameworks/base`, `hardware/mediatek` | Lock screen showed "Full in 45 days". The Xiaomi battery driver fills `time_to_full_now` with a capacity-derived number (missing levels × 75200 or 150400), not seconds. | The MediaTek health HAL reports the value as unknown, and `BatteryStatsImpl` ignores anything above 24 h, so the framework uses its own charge-step estimate. |
-| Charging stats | `frameworks/base` | The lock screen "Charging stats" toggle looked ignored: the stats line is appended as a third line and the indication text allowed only two. | Keyguard indication text allows three lines. |
-| Auto brightness | `vendor/xiaomi/dash` (merged in oss-dash) | In dim light the under-display sensor (`tsl2525_als`) reports integer lux toggling 0 ↔ 1, and the brightening threshold at 0 lux is 0, so the screen jumped between 3.5 and 6.4 nits every few seconds. | Display config requires more than 1 lux of change before brightening. |
-| Brightness ramps | `vendor/xiaomi/dash` (merged in oss-dash) | Auto brightness jumped instead of fading: without per-display ramps the framework used `config_brightness_ramp_rate_*`, which the overlay sets above the 0-255 scale, so every ramp was clamped to 1.0/s. | Display config ramps: auto 0.15/s up and 0.10/s down (max 2 s / 3 s), manual 0.6/s up and 0.5/s down. |
-| Custom fingerprint icon | `frameworks/base` | The fingerprint icon picked in the Infinity settings was used only on the lock screen: on AOD, notification pulses and the first frames of a wake-up the stock fingerprint animation was shown. | The AOD fingerprint state uses the custom icon too. |
-| Notification wake | `frameworks/base` | With the screen off, a notification started an AOD-style doze pulse, which is buggy on this device: the display came on at minimum brightness and the lock screen faded in from black, so it looked like a dark frame followed by a jump in brightness. A slower pulse fade did not fix it. | The AOD pulse is replaced by a normal wake: notifications turn the screen on like the power button (normal screen-on transition and auto brightness), after the same pocket check. Still controlled by *Wake screen for notifications*. |
-| Call volume | `device/xiaomi/dash`, `hardware/mediatek` | The volume of normal phone calls (earpiece and speaker) could not be changed, only VoIP calls followed the slider. The MediaTek DSP applies the call volume from the `volumeIndex` parameter sent by `MtkInCallService`, but with the AIDL audio HAL every `AudioSystem.setParameters()` went through a parameter parser without a vendor extension, which rejected all vendor parameters. The service also clamped the 15 framework steps to 7, so the upper half of the slider was always the maximum. | A small `IHalAdapterVendorExtension` (`libaudiohaladaptervendorext.mediatek`) passes the raw key/value string to the MediaTek HAL, and `MtkInCallService` scales the index to the 7 vendor steps. Verified against HyperOS OS3.0.304: same `volumeIndex` for every slider position, so steps and range match stock. |
-| Screen dim | `device/xiaomi/dash` | Before the screen timeout the screen dimmed to the panel minimum (2 nits), so it looked off while the brightness slider still showed the user value. Easy to hit with MIUI Camera, which releases `FLAG_KEEP_SCREEN_ON` after some idle time and leaves the screen dimmed until the timeout. | `config_screenBrightnessDimFloat` uses the HyperOS dim level (`config_screenBrightnessDim_hyper` = 15/255, about 65 nits). |
-| Volume | `device/xiaomi/dash` | The vendor audio config declares 30 media steps and a default of 20, but the framework used 15, so each step was twice as large and the lowest step louder than stock. | 30 media volume steps, safe headphone index scaled to 20/30. |
-| Settings search | `frameworks/base` | Settings search returned almost nothing: Settings Services updated from the Play Store only indexes Pixel Settings (0 entries vs 1952 with the bundled version). | New `config_pinnedSystemPackages`: updates to listed system packages are rejected unless they come from adb or root. Settings Services is pinned to the bundled build. |
-| Sound picker lag | `frameworks/base` | Google Sound Picker calls `ContentResolver.canonicalize()` for ~450 sounds on the main thread at every tap, freezing the UI for 0.7–0.85 s. | `canonicalize()` answers for the `media` authority are cached per process (30 s for hits, 2 s for misses). |
-| Lock screen camera | `frameworks/base`, `device/xiaomi/dash` | The lock screen camera shortcut showed a chooser with MiuiCamera twice: the app handles the secure camera intent with `.Camera` and `.AssistantCamera`. | New SystemUI `config_cameraSecureActivity`; the device overlay points it to `com.android.camera/.Camera`. |
-| Build | `build/soong`, `device/xiaomi/dash` | The `mediatek-ims-common` boot jar contains `com.xiaomi.ims` classes; the device tree only had a Lineage product. | Allow `com.xiaomi.ims` in the boot jar package list; add the `infinity_dash` product. |
+Status: **Fixed** = verified on the device. **Should be fixed** = the cause is fixed, but the
+problem happened at random and could not be reproduced on demand, so it is confirmed only by
+it not showing up anymore.
+
+| Area | Project | Problem | Fix | Status |
+|---|---|---|---|---|
+| Accidental touches | `device/xiaomi/dash` (Parts, sepolicy) | Random taps, for example MIUI Camera switching to Portrait or opening the beauty menu on its own. Palm and edge rejection runs in the Xiaomi touch host processing service (`vendor.xiaomi.hw.touchfeature`), and its edge filter (mode 7) stayed off: on HyperOS a mode reset leaves it at the panel default and the framework sends the display rotation (mode 8). Nothing did either here, so fingers resting on the edges registered as taps. | Parts sets the edge filter to the panel default at boot and keeps the panel orientation in sync with the display rotation, as HyperOS does, again if the service restarts. | Should be fixed |
+| Screen dim | `device/xiaomi/dash` (merged in oss-dash) | Before the screen timeout the screen dimmed to the panel minimum (2 nits), so it looked off while the brightness slider still showed the user value. Easy to hit with MIUI Camera, which releases `FLAG_KEEP_SCREEN_ON` after some idle time and leaves the screen dimmed until the timeout. | `config_screenBrightnessDimFloat` uses the HyperOS dim level (`config_screenBrightnessDim_hyper` = 15/255, about 65 nits). | Should be fixed |
+| Display engine | `frameworks/base` | The *Reality display engine* modes X-Reality, Triluminous, Natural and Cinema turned the whole screen white, while Vivid and Reading worked. Those four are the modes with a contrast other than 1.0: the contrast pivot adds a translation term to the color matrix, and the MediaTek hardware composer does not handle offsets in the color transform. | Contrast is applied as a scale only. For the preset values the dropped offset is below one 8-bit step. | Fixed |
+| Auto brightness swings | `device/xiaomi/dash`, `vendor/xiaomi/dash` | Auto brightness kept moving, for example while mirroring the screen or with short shadows on the under-display light sensor. The device used the HyperOS timings (1 s debounce both ways, 1.5 s / 1 s ambient light horizons), tuned for the HyperOS brightness algorithm, so the AOSP controller followed every short change. | AOSP debounce and ambient light horizons (10 s / 2 s), in the overlay, the display config and its `extract-files.py` fixup. | Fixed |
+| AOSP brightness behaviour | `device/xiaomi/dash` | Other HyperOS tuning in the overlays and props: custom ambient and screen brightness thresholds, auto brightness adjustment gamma, gamma conversion of the brightness slider turned off, lock screen limited to 60 Hz. | Removed, so the AOSP defaults apply. | Fixed |
+| Memory (lmkd) | `device/xiaomi/dash` | The HyperOS lmkd properties (`ro.lmk.filecache_min_kb`, `kill_timeout_ms`, `stall_limit_critical`) are tuned for the HyperOS memory management, not for AOSP. | Removed: lmkd uses the AOSP defaults. | Fixed |
+| Charging time | `frameworks/base`, `hardware/mediatek` (merged in oss-dash) | Lock screen showed "Full in 45 days". The Xiaomi battery driver fills `time_to_full_now` with a capacity-derived number (missing levels × 75200 or 150400), not seconds. | The MediaTek health HAL reports the value as unknown, and `BatteryStatsImpl` ignores anything above 24 h, so the framework uses its own charge-step estimate. | Fixed |
+| Charging stats | `frameworks/base` | The lock screen "Charging stats" toggle looked ignored: the stats line is appended as a third line and the indication text allowed only two. | Keyguard indication text allows three lines. | Fixed |
+| Auto brightness | `vendor/xiaomi/dash` (merged in oss-dash) | In dim light the under-display sensor (`tsl2525_als`) reports integer lux toggling 0 ↔ 1, and the brightening threshold at 0 lux is 0, so the screen jumped between 3.5 and 6.4 nits every few seconds. | Display config requires more than 1 lux of change before brightening. | Fixed |
+| Brightness ramps | `vendor/xiaomi/dash` (merged in oss-dash) | Auto brightness jumped instead of fading: without per-display ramps the framework used `config_brightness_ramp_rate_*`, which the overlay sets above the 0-255 scale, so every ramp was clamped to 1.0/s. | Display config ramps: auto 0.15/s up and 0.10/s down (max 2 s / 3 s), manual 0.6/s up and 0.5/s down. | Fixed |
+| Custom fingerprint icon | `frameworks/base` | The fingerprint icon picked in the Infinity settings was used only on the lock screen: on AOD, notification pulses and the first frames of a wake-up the stock fingerprint animation was shown. | The AOD fingerprint state uses the custom icon too. | Fixed |
+| Notification wake | `frameworks/base` | With the screen off, a notification started an AOD-style doze pulse, which is buggy on this device: the display came on at minimum brightness and the lock screen faded in from black, so it looked like a dark frame followed by a jump in brightness. A slower pulse fade did not fix it. | The AOD pulse is replaced by a normal wake: notifications turn the screen on like the power button (normal screen-on transition and auto brightness), after the same pocket check. Still controlled by *Wake screen for notifications*. | Fixed |
+| Call volume | `device/xiaomi/dash`, `hardware/mediatek` (merged in oss-dash) | The volume of normal phone calls (earpiece and speaker) could not be changed, only VoIP calls followed the slider. The MediaTek DSP applies the call volume from the `volumeIndex` parameter sent by `MtkInCallService`, but with the AIDL audio HAL every `AudioSystem.setParameters()` went through a parameter parser without a vendor extension, which rejected all vendor parameters. The service also clamped the 15 framework steps to 7, so the upper half of the slider was always the maximum. | A small `IHalAdapterVendorExtension` (`libaudiohaladaptervendorext.mediatek`) passes the raw key/value string to the MediaTek HAL, and `MtkInCallService` scales the index to the 7 vendor steps. Verified against HyperOS OS3.0.304: same `volumeIndex` for every slider position, so steps and range match stock. | Fixed |
+| Volume | `device/xiaomi/dash` (merged in oss-dash) | The vendor audio config declares 30 media steps and a default of 20, but the framework used 15, so each step was twice as large and the lowest step louder than stock. | 30 media volume steps, safe headphone index scaled to 20/30. | Fixed |
+| Settings search | `frameworks/base` | Settings search returned almost nothing: Settings Services updated from the Play Store only indexes Pixel Settings (0 entries vs 1952 with the bundled version). | New `config_pinnedSystemPackages`: updates to listed system packages are rejected unless they come from adb or root. Settings Services is pinned to the bundled build. | Fixed |
+| Sound picker lag | `frameworks/base` | Google Sound Picker calls `ContentResolver.canonicalize()` for ~450 sounds on the main thread at every tap, freezing the UI for 0.7–0.85 s. | `canonicalize()` answers for the `media` authority are cached per process (30 s for hits, 2 s for misses). | Fixed |
+| Lock screen camera | `frameworks/base`, `device/xiaomi/dash` | The lock screen camera shortcut showed a chooser with MiuiCamera twice: the app handles the secure camera intent with `.Camera` and `.AssistantCamera`. | New SystemUI `config_cameraSecureActivity`; the device overlay points it to `com.android.camera/.Camera`. | Fixed |
+| Build | `build/soong`, `device/xiaomi/dash` | The `mediatek-ims-common` boot jar contains `com.xiaomi.ims` classes; the device tree only had a Lineage product. | Allow `com.xiaomi.ims` in the boot jar package list; add the `infinity_dash` product. | Fixed |
+
+Fixes marked *merged in oss-dash* are part of the upstream trees now and are no longer shipped as
+patches here.
 
 ## Repositories
 
@@ -41,10 +53,13 @@ committed directly in them. `manifest/dash.xml` (copy it to `.repo/local_manifes
 | Path | Fork | Branch | Upstream |
 |---|---|---|---|
 | `device/xiaomi/dash` | [alesx2io/android_device_xiaomi_dash](https://github.com/alesx2io/android_device_xiaomi_dash) | `infinity` (prebuilt kernel), `infinity-kleaf` | oss-dash |
-| `hardware/mediatek` | [alesx2io/android_hardware_mediatek](https://github.com/alesx2io/android_hardware_mediatek) | `infinity` | oss-dash |
-| `device/xiaomi/dash-miuicamera`, `device/xiaomi/dash-kernel`, `hardware/xiaomi`, `device/mediatek/sepolicy_vndr`, `packages/apps/LunarisDolby`, `vendor/qcom/opensource/vibrator` | `github.com/alesx2io/<same name>` | `lineage-24.0` (mirror) | oss-dash |
-| `vendor/xiaomi/dash`, `vendor/xiaomi/dash-miuicamera` (blobs, Git LFS) | `gitlab.com/alesx2io/<same name>` | `lineage-24.0` (mirror) | oss-dash (GitLab) |
+| `vendor/xiaomi/dash` (blobs, Git LFS) | [gitlab.com/alesx2io/proprietary_vendor_xiaomi_dash](https://gitlab.com/alesx2io/proprietary_vendor_xiaomi_dash) | `infinity` | oss-dash (GitLab) |
+| `hardware/mediatek`, `device/xiaomi/dash-miuicamera`, `device/xiaomi/dash-kernel`, `hardware/xiaomi`, `device/mediatek/sepolicy_vndr`, `packages/apps/LunarisDolby`, `vendor/qcom/opensource/vibrator` | `github.com/alesx2io/<same name>` | `lineage-24.0` (mirror) | oss-dash |
+| `vendor/xiaomi/dash-miuicamera` (blobs, Git LFS) | `gitlab.com/alesx2io/<same name>` | `lineage-24.0` (mirror) | oss-dash (GitLab) |
 | `kernel/platform/kernel-6.6/*` (Kleaf variant only) | `github.com/alesx2io/android_kernel*` | `lineage-24.0` (mirror, never patched) | oss-dash-kernel |
+
+Each fork with our fixes lists them in its README. The `lineage-24.0` branch of every fork is
+kept identical to oss-dash.
 
 Infinity-X itself (`frameworks/base`, `build/soong`) is not forked: its fixes stay as patches in
 `patches/` and are applied with `apply-patches.sh`. The device patches in `patches/` are kept as
@@ -123,11 +138,13 @@ python3 tools/check-updates.py --src /path/to/infinity
 
 - Generated against Infinity-X 4.2 (`17` branch, `BUILD_ID=CP2A.260605.016`) and the oss-dash
   `lineage-24.0` trees as of 2026-11-16.
-- Device tree and `hardware/mediatek` patches are based on the oss-dash trees of 2026-11-19
-  (device tree without the Kleaf commit for the `prebuilt` variant).
-- The auto brightness threshold and brightness ramp fixes, first made here, are now part of
-  oss-dash (`vendor/xiaomi/dash` and `extract-files.py`), so they are no longer shipped as
-  patches. oss-dash also fixed the minimum refresh rate reset after boot in the same way.
+- Device tree patches are based on the oss-dash device tree of 2026-11-22 without the Kleaf and
+  DSAC commits (`prebuilt` variant); they apply to the `infinity-kleaf` branch as well.
+  `patches/vendor/xiaomi/dash` is based on the oss-dash blobs of 2026-11-22.
+- The auto brightness threshold and brightness ramp fixes, the call volume, charging time,
+  media volume steps and screen dim fixes, first made here, are now part of oss-dash, so they
+  are no longer shipped as patches. oss-dash also fixed the minimum refresh rate reset after
+  boot in the same way.
 - `0001-dash-add-Infinity-X-product.patch` contains the maintainer name and product
   properties for these builds: adapt it before using it in your own build.
 

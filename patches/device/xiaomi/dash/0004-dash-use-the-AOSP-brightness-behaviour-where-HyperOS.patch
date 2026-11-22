@@ -1,0 +1,156 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: alesx2io <96351978+alesx2io@users.noreply.github.com>
+Date: Fri, 20 Nov 2026 21:06:10 +0100
+Subject: [PATCH] dash: use the AOSP brightness behaviour where HyperOS tuning
+ leaked in
+
+Several values were copied from HyperOS, where a different brightness
+algorithm uses them. With the AOSP controller they misbehave:
+
+- ambient light hysteresis (+0.2..40 % up, -50..80 % down): auto
+  brightness reacted to tiny light changes and stuck high in the dark.
+  Use the AOSP 10 % / 20 %.
+- screen brightness hysteresis 0: every computed change was applied,
+  so the screen kept adjusting. Use the AOSP 10 % / 20 %.
+- config_autoBrightnessAdjustmentMaxGamma 100 %: part of the user
+  adjustment had no effect. Use the AOSP 300 %.
+- sys.brightness.disable_gamma_conversion: the slider was linear in nits,
+  with the useful low range squeezed at the start. Use the AOSP
+  perceptual (HLG) slider; the backlight scale of this panel is linear.
+- config_keyguardMaxRefreshRate 60: the lock screen ran at 60 Hz and the
+  rest at 120 Hz, adding a mode switch on every unlock. No cap, as in AOSP.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../res/values/config.xml                     | 78 ++-----------------
+ .../DashSystemUIOverlay/res/values/config.xml |  2 -
+ system_ext.prop                               |  3 -
+ 3 files changed, 5 insertions(+), 78 deletions(-)
+
+diff --git a/overlay/DashFrameworksOverlay/res/values/config.xml b/overlay/DashFrameworksOverlay/res/values/config.xml
+index c57e89d..ee4c84e 100644
+--- a/overlay/DashFrameworksOverlay/res/values/config.xml
++++ b/overlay/DashFrameworksOverlay/res/values/config.xml
+@@ -66,9 +66,6 @@
+          (4 s / 8 s). The stock 1 s values made auto brightness follow every short shadow on
+          the under-display light sensor, e.g. the user's head while using the front camera. -->
+ 
+-    <!-- The maximum range of gamma adjustment possible using the screen
+-         auto-brightness adjustment setting. -->
+-    <fraction name="config_autoBrightnessAdjustmentMaxGamma">100%</fraction>
+ 
+     <!-- Screen brightness used to dim the screen when the user activity
+          timeout expires.  May be less than the minimum allowed brightness setting
+@@ -507,80 +504,15 @@
+         <item>3500.0</item>
+     </array>
+ 
+-    <!-- Array of ambient lux threshold values. This is used for determining hysteresis constraint
+-         values by calculating the index to use for lookup and then setting the constraint value
+-         to the corresponding value of the array. The new brightening hysteresis constraint value
+-         is the n-th element of config_ambientBrighteningThresholds, and the new darkening
+-         hysteresis constraint value is the n-th element of config_ambientDarkeningThresholds.
+-
+-         The (zero-based) index is calculated as follows: (MAX is the largest index of the array)
+-         condition                       calculated index
+-         value < level[0]                0
+-         level[n] <= value < level[n+1]  n+1
+-         level[MAX] <= value             MAX+1 -->
+-    <integer-array name="config_ambientThresholdLevels">
+-        <item>2</item>
+-        <item>10</item>
+-        <item>30</item>
+-        <item>100</item>
+-        <item>800</item>
+-        <item>2000</item>
+-        <item>4000</item>
+-    </integer-array>
++    <!-- Brightness hysteresis and the auto brightness adjustment gamma use the AOSP defaults
++         (ambient 10 % up / 20 % down, screen 10 % / 20 %, max gamma 300 %). The stock values
++         were tuned for the HyperOS brightness algorithm: with the AOSP controller they made
++         auto brightness react to tiny light changes, stick high in the dark and ignore part
++         of the user adjustment. -->
+ 
+-    <!-- Array of hysteresis constraint values for brightening, represented as tenths of a
+-         percent. The length of this array is assumed to be one greater than
+-         config_ambientThresholdLevels. The brightening threshold is calculated as
+-         lux * (1.0f + CONSTRAINT_VALUE). When the current lux is higher than this threshold,
+-         the screen brightness is recalculated. See the config_ambientThresholdLevels
+-         description for how the constraint value is chosen. -->
+-    <integer-array name="config_ambientBrighteningThresholds">
+-        <item>2</item>
+-        <item>6</item>
+-        <item>10</item>
+-        <item>30</item>
+-        <item>100</item>
+-        <item>400</item>
+-        <item>600</item>
+-        <item>1000</item>
+-    </integer-array>
+ 
+-    <!-- Array of hysteresis constraint values for darkening, represented as tenths of a
+-         percent. The length of this array is assumed to be one greater than
+-         config_ambientThresholdLevels. The darkening threshold is calculated as
+-         lux * (1.0f - CONSTRAINT_VALUE). When the current lux is lower than this threshold,
+-         the screen brightness is recalculated. See the config_ambientThresholdLevels
+-         description for how the constraint value is chosen. -->
+-    <integer-array name="config_ambientDarkeningThresholds">
+-        <item>800</item>
+-        <item>800</item>
+-        <item>500</item>
+-        <item>500</item>
+-        <item>500</item>
+-        <item>500</item>
+-        <item>500</item>
+-        <item>500</item>
+-    </integer-array>
+ 
+-    <!-- Array of hysteresis constraint values for brightening, represented as tenths of a
+-         percent. The length of this array is assumed to be one greater than
+-         config_screenThresholdLevels. The brightening threshold is calculated as
+-         screenBrightness * (1.0f + CONSTRAINT_VALUE). When the new screen brightness is higher
+-         than this threshold, it is applied. See the config_screenThresholdLevels description for
+-         how the constraint value is chosen. -->
+-    <integer-array name="config_screenBrighteningThresholds">
+-        <item>0</item>
+-    </integer-array>
+ 
+-    <!-- Array of hysteresis constraint values for darkening, represented as tenths of a
+-         percent. The length of this array is assumed to be one greater than
+-         config_screenThresholdLevels. The darkening threshold is calculated as
+-         screenBrightness * (1.0f - CONSTRAINT_VALUE). When the new screen brightness is lower than
+-         this threshold, it is applied. See the config_screenThresholdLevels description for how
+-         the constraint value is chosen. -->
+-    <integer-array name="config_screenDarkeningThresholds">
+-        <item>0</item>
+-    </integer-array>
+ 
+     <!-- Whether a software navigation bar should be shown. NOTE: in the future this may be
+          autodetected from the Configuration. -->
+diff --git a/overlay/DashSystemUIOverlay/res/values/config.xml b/overlay/DashSystemUIOverlay/res/values/config.xml
+index 53803fc..0360ef5 100644
+--- a/overlay/DashSystemUIOverlay/res/values/config.xml
++++ b/overlay/DashSystemUIOverlay/res/values/config.xml
+@@ -4,8 +4,6 @@
+      SPDX-License-Identifier: Apache-2.0
+ -->
+ <resources>
+-    <!-- Preferred max refresh rate at keyguard, if supported by the display. -->
+-    <integer name="config_keyguardMaxRefreshRate">60</integer>
+ 
+     <!-- Should we vibrate on an icon animation of the shelf. This should only be active if the
+      vibrator is capable of subtle vibrations -->
+diff --git a/system_ext.prop b/system_ext.prop
+index 50b905b..0098789 100644
+--- a/system_ext.prop
++++ b/system_ext.prop
+@@ -6,9 +6,6 @@ ro.audio.ihaladaptervendorextension_libname=libaudiohaladaptervendorext.mediatek
+ ro.audio.usb.period_us=16000
+ ro.camera.sound.forced=0
+ 
+-# Display
+-sys.brightness.disable_gamma_conversion=true
+-
+ # Radio
+ ro.fota.oem=Xiaomi
+ ro.radio.device_type=1

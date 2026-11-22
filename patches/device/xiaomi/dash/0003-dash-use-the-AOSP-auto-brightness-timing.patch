@@ -1,0 +1,57 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: alesx2io <96351978+alesx2io@users.noreply.github.com>
+Date: Fri, 20 Nov 2026 20:44:18 +0100
+Subject: [PATCH] dash: use the AOSP auto brightness timing
+
+The stock light sensor debounce (1 s) and ambient light horizons (1.5 s /
+1 s) are tuned for the HyperOS brightness algorithm. With the AOSP
+controller auto brightness followed every short shadow on the
+under-display sensor: looking at the front camera made the screen swing
+between about 220 and 600 nits.
+
+Use the AOSP defaults: 4 s / 8 s debounce (drop the overlay values) and
+10 s / 2 s horizons (blob fixup of the display config).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ extract-files.py                                    |  5 +++++
+ overlay/DashFrameworksOverlay/res/values/config.xml | 10 +++-------
+ 2 files changed, 8 insertions(+), 7 deletions(-)
+
+diff --git a/extract-files.py b/extract-files.py
+index ce3e4f8..eaf7d0d 100755
+--- a/extract-files.py
++++ b/extract-files.py
+@@ -141,6 +141,11 @@ def blob_fixup_displayconfig(
+         data = data.replace(ramp_anchor, ramps + ramp_anchor, 1)
+     if threshold_anchor in data and 'ambientBrightnessChangeThresholds' not in data:
+         data = data.replace(threshold_anchor, threshold_anchor + thresholds, 1)
++    # The stock 1.5 s / 1 s ambient light horizons are tuned for the HyperOS brightness
++    # algorithm. With the AOSP controller they make auto brightness follow every short
++    # shadow on the under-display sensor; use the AOSP defaults instead.
++    data = data.replace(ramp_anchor, '    <ambientLightHorizonLong>10000</ambientLightHorizonLong>\n', 1)
++    data = data.replace(threshold_anchor, '    <ambientLightHorizonShort>2000</ambientLightHorizonShort>\n', 1)
+ 
+     with open(file_path, 'w') as f:
+         f.write(data)
+diff --git a/overlay/DashFrameworksOverlay/res/values/config.xml b/overlay/DashFrameworksOverlay/res/values/config.xml
+index 542b4f7..c57e89d 100644
+--- a/overlay/DashFrameworksOverlay/res/values/config.xml
++++ b/overlay/DashFrameworksOverlay/res/values/config.xml
+@@ -62,13 +62,9 @@
+          Must be in the range specified by minimum and maximum. -->
+     <item name="config_screenBrightnessSettingDefaultFloat" format="float" type="dimen">0.07496032</item>
+ 
+-    <!-- Stability requirements in milliseconds for accepting a new brightness level.  This is used
+-         for debouncing the light sensor.  Different constants are used to debounce the light sensor
+-         when adapting to brighter or darker environments.  This parameter controls how quickly
+-         brightness changes occur in response to an observed change in light level that exceeds the
+-         hysteresis threshold. -->
+-    <integer name="config_autoBrightnessBrighteningLightDebounce">1000</integer>
+-    <integer name="config_autoBrightnessDarkeningLightDebounce">1000</integer>
++    <!-- config_autoBrightness{Brightening,Darkening}LightDebounce: use the AOSP defaults
++         (4 s / 8 s). The stock 1 s values made auto brightness follow every short shadow on
++         the under-display light sensor, e.g. the user's head while using the front camera. -->
+ 
+     <!-- The maximum range of gamma adjustment possible using the screen
+          auto-brightness adjustment setting. -->

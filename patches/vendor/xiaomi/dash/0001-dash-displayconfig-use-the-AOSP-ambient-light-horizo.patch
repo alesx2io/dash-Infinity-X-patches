@@ -1,0 +1,29 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: alesx2io <96351978+alesx2io@users.noreply.github.com>
+Date: Fri, 20 Nov 2026 20:44:18 +0100
+Subject: [PATCH] dash: displayconfig: use the AOSP ambient light horizons
+
+10 s / 2 s instead of the stock 1.5 s / 1 s, which are tuned for the HyperOS
+brightness algorithm and made the AOSP controller follow short shadows on
+the under-display light sensor. Matches the device blob fixup.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../etc/displayconfig/display_id_4627039422300187648.xml      | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/proprietary/vendor/etc/displayconfig/display_id_4627039422300187648.xml b/proprietary/vendor/etc/displayconfig/display_id_4627039422300187648.xml
+index ab3acd6..68a0782 100644
+--- a/proprietary/vendor/etc/displayconfig/display_id_4627039422300187648.xml
++++ b/proprietary/vendor/etc/displayconfig/display_id_4627039422300187648.xml
+@@ -74,8 +74,8 @@
+     <screenBrightnessRampSlowIncrease>0.15</screenBrightnessRampSlowIncrease>
+     <screenBrightnessRampIncreaseMaxMillis>2000</screenBrightnessRampIncreaseMaxMillis>
+     <screenBrightnessRampDecreaseMaxMillis>3000</screenBrightnessRampDecreaseMaxMillis>
+-    <ambientLightHorizonLong>1500</ambientLightHorizonLong>
+-    <ambientLightHorizonShort>1000</ambientLightHorizonShort>
++    <ambientLightHorizonLong>10000</ambientLightHorizonLong>
++    <ambientLightHorizonShort>2000</ambientLightHorizonShort>
+     <!-- tsl2525_als reports integer lux: require more than 1 lux of change before
+          brightening, so a reading that toggles between N and N+1 does not move the screen.
+          Percentages still come from config_ambientBrighteningThresholds. -->

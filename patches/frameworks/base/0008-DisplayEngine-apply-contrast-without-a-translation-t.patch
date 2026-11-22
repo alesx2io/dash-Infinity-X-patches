@@ -1,0 +1,42 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: alesx2io <96351978+alesx2io@users.noreply.github.com>
+Date: Fri, 20 Nov 2026 20:14:53 +0100
+Subject: [PATCH] DisplayEngine: apply contrast without a translation term
+
+The contrast step pivots around mid gray, which adds an offset to the color
+transform. The MediaTek hardware composer mishandles offsets: any non-zero
+translation (about -0.004 for the presets) turns the whole screen white, so
+only the modes with neutral contrast (Default, Vivid, Reading) worked.
+
+Apply contrast as a plain scale. For the preset contrasts the dropped offset
+is below one 8-bit step, so the modes look the same and stay in the hardware
+color transform (no GPU composition).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../server/display/color/DisplayEngineController.java     | 8 +++++---
+ 1 file changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/services/core/java/com/android/server/display/color/DisplayEngineController.java b/services/core/java/com/android/server/display/color/DisplayEngineController.java
+index eae6745ef..ac7b592b3 100644
+--- a/services/core/java/com/android/server/display/color/DisplayEngineController.java
++++ b/services/core/java/com/android/server/display/color/DisplayEngineController.java
+@@ -232,13 +232,15 @@ final class DisplayEngineController extends TintController {
+         if (contrast == 1.0f) {
+             return;
+         }
+-        final float pivot = mNeedsLinear ? (float) Math.pow(0.5, SRGB_GAMMA) : 0.5f;
+-        final float translate = (1.0f - contrast) * pivot;
++        // Scale only. A contrast pivot needs a translation term, and some hardware composers
++        // (MediaTek) do not handle offsets in the color transform: any non-zero offset turns
++        // the whole screen white. For the preset contrasts the offset is below one 8-bit
++        // step, so dropping it has no visible effect.
+         final float[] contrastMatrix = {
+             contrast, 0, 0, 0,
+             0, contrast, 0, 0,
+             0, 0, contrast, 0,
+-            translate, translate, translate, 1
++            0, 0, 0, 1
+         };
+         preMultiply(matrix, contrastMatrix);
+     }

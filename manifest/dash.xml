@@ -18,11 +18,11 @@
   <project path='device/xiaomi/dash-kernel' name='android_device_xiaomi_dash-kernel' remote='dash' revision='lineage-24.0' />
 
   <!-- Blob vendor (GitLab) -->
-  <project path='vendor/xiaomi/dash' name='proprietary_vendor_xiaomi_dash' remote='dashgl' revision='lineage-24.0' />
+  <project path='vendor/xiaomi/dash' name='proprietary_vendor_xiaomi_dash' remote='dashgl' revision='infinity' />
   <project path='vendor/xiaomi/dash-miuicamera' name='proprietary_vendor_xiaomi_dash-miuicamera' remote='dashgl' revision='lineage-24.0' />
 
   <!-- Hardware e sepolicy -->
-  <project path='hardware/mediatek' name='android_hardware_mediatek' remote='dash' revision='infinity' />
+  <project path='hardware/mediatek' name='android_hardware_mediatek' remote='dash' revision='lineage-24.0' />
   <project path='hardware/xiaomi' name='android_hardware_xiaomi' remote='dash' revision='lineage-24.0' />
   <project path='device/mediatek/sepolicy_vndr' name='android_device_mediatek_sepolicy_vndr' remote='dash' revision='lineage-24.0' />
 

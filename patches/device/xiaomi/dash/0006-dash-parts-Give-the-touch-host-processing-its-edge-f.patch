@@ -1,0 +1,295 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: alesx2io <96351978+alesx2io@users.noreply.github.com>
+Date: Sun, 22 Nov 2026 12:50:24 +0100
+Subject: [PATCH] dash: parts: Give the touch host processing its edge filter
+ and orientation
+
+On HyperOS the framework sends the display rotation to the touchfeature
+service (mode 8) on every rotation, and a mode reset leaves the edge
+filter (mode 7) at the panel default. Nothing does either here, so the
+service runs with the edge filter off and fingers resting on the edges
+register as taps (random taps in the camera).
+
+Set the edge filter to its default and keep the panel orientation in
+sync with the display rotation from Parts, again if the service
+restarts. Declare the service types in the public policy so the
+system_ext app can reach it.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ parts/Android.bp                              |   1 +
+ .../xiaomi/settings/BootCompletedReceiver.kt  |   4 +
+ .../settings/touch/TouchFeatureController.kt  | 109 ++++++++++++++++++
+ .../private/compat/202404/202404.ignore.cil   |   4 +-
+ sepolicy/private/compat/30.0/30.0.ignore.cil  |   4 +-
+ sepolicy/private/compat/31.0/31.0.ignore.cil  |   4 +-
+ sepolicy/private/compat/32.0/32.0.ignore.cil  |   4 +-
+ sepolicy/private/compat/33.0/33.0.ignore.cil  |   4 +-
+ sepolicy/private/compat/34.0/34.0.ignore.cil  |   4 +-
+ sepolicy/private/parts_app.te                 |   3 +
+ sepolicy/public/hal_touchfeature_xiaomi.te    |   3 +
+ sepolicy/vendor/hal_touchfeature_xiaomi.te    |   1 -
+ sepolicy/vendor/service.te                    |   2 -
+ 13 files changed, 138 insertions(+), 9 deletions(-)
+ create mode 100644 parts/src/com/xiaomi/settings/touch/TouchFeatureController.kt
+ create mode 100644 sepolicy/public/hal_touchfeature_xiaomi.te
+
+diff --git a/parts/Android.bp b/parts/Android.bp
+index 4caf098..a3f202b 100644
+--- a/parts/Android.bp
++++ b/parts/Android.bp
+@@ -16,5 +16,6 @@ android_app {
+         "androidx.preference_preference",
+         "org.lineageos.settings.resources",
+         "vendor.xiaomi.hardware.displayfeature_aidl-V2-java",
++        "vendor.xiaomi.hw.touchfeature-V1-java",
+     ],
+ }
+diff --git a/parts/src/com/xiaomi/settings/BootCompletedReceiver.kt b/parts/src/com/xiaomi/settings/BootCompletedReceiver.kt
+index 25f23c0..3594624 100644
+--- a/parts/src/com/xiaomi/settings/BootCompletedReceiver.kt
++++ b/parts/src/com/xiaomi/settings/BootCompletedReceiver.kt
+@@ -14,6 +14,7 @@ import android.util.Log
+ import android.view.Display;
+ import android.view.Display.HdrCapabilities;
+ import com.xiaomi.settings.display.ColorService
++import com.xiaomi.settings.touch.TouchFeatureController
+ 
+ class BootCompletedReceiver : BroadcastReceiver() {
+ 
+@@ -43,6 +44,9 @@ class BootCompletedReceiver : BroadcastReceiver() {
+     private fun onLockedBootCompleted(context: Context) {
+         // Display
+         ColorService.startService(context)
++
++        // Touch
++        TouchFeatureController.start(context.applicationContext)
+     }
+ 
+     companion object {
+diff --git a/parts/src/com/xiaomi/settings/touch/TouchFeatureController.kt b/parts/src/com/xiaomi/settings/touch/TouchFeatureController.kt
+new file mode 100644
+index 0000000..109f590
+--- /dev/null
++++ b/parts/src/com/xiaomi/settings/touch/TouchFeatureController.kt
+@@ -0,0 +1,109 @@
++/*
++ * SPDX-FileCopyrightText: The LineageOS Project
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++package com.xiaomi.settings.touch
++
++import android.content.Context
++import android.hardware.display.DisplayManager
++import android.os.Handler
++import android.os.HandlerThread
++import android.os.IBinder
++import android.os.ServiceManager
++import android.util.Log
++import android.view.Display
++import vendor.xiaomi.hw.touchfeature.ITouchFeature
++
++/**
++ * Feeds the touch host processing the state HyperOS gives it from the framework.
++ *
++ * - Edge filter (mode 7): the service starts with it off; set it to the panel default, which is
++ *   what a mode reset on stock leaves behind. Without it, fingers resting on the edges register
++ *   as taps.
++ * - Panel orientation (mode 8): the display rotation, as stock sends it on every rotation, so
++ *   the edge filter rejects the right edges in landscape.
++ *
++ * Both are applied again if the touch service restarts.
++ */
++object TouchFeatureController {
++
++    private const val TAG = "TouchFeatureController"
++    private val DEBUG = Log.isLoggable(TAG, Log.DEBUG)
++
++    private const val TOUCH_ID = 0
++    private const val MODE_EDGE_FILTER = 7
++    private const val MODE_PANEL_ORIENTATION = 8
++
++    private lateinit var displayManager: DisplayManager
++    private lateinit var handler: Handler
++    @Volatile private var touchFeature: ITouchFeature? = null
++    private var started = false
++
++    private val deathRecipient =
++        IBinder.DeathRecipient {
++            Log.w(TAG, "touchfeature service died, applying the modes again")
++            touchFeature = null
++            handler.post { applyAll() }
++        }
++
++    private val displayListener =
++        object : DisplayManager.DisplayListener {
++            override fun onDisplayAdded(displayId: Int) {}
++
++            override fun onDisplayRemoved(displayId: Int) {}
++
++            override fun onDisplayChanged(displayId: Int) {
++                if (displayId == Display.DEFAULT_DISPLAY) applyOrientation()
++            }
++        }
++
++    @Synchronized
++    fun start(context: Context) {
++        if (started) return
++        started = true
++        displayManager = context.getSystemService(DisplayManager::class.java)
++        handler = Handler(HandlerThread(TAG).apply { start() }.looper)
++        displayManager.registerDisplayListener(displayListener, handler)
++        handler.post { applyAll() }
++    }
++
++    private fun getTouchFeature(): ITouchFeature? =
++        touchFeature
++            ?: runCatching {
++                    val binder =
++                        ServiceManager.waitForDeclaredService("${ITouchFeature.DESCRIPTOR}/default")
++                    ITouchFeature.Stub.asInterface(binder).apply {
++                        asBinder().linkToDeath(deathRecipient, 0)
++                    }
++                }
++                .onSuccess { touchFeature = it }
++                .onFailure { e -> Log.e(TAG, "Failed to get the touchfeature service", e) }
++                .getOrNull()
++
++    private fun applyAll() {
++        val service = getTouchFeature() ?: return
++        runCatching {
++                val edgeFilter = service.getModeDefaultValue(TOUCH_ID, MODE_EDGE_FILTER)
++                if (DEBUG) Log.d(TAG, "edge filter -> $edgeFilter")
++                service.setModeValue(TOUCH_ID, MODE_EDGE_FILTER, edgeFilter)
++            }
++            .onFailure { e -> Log.e(TAG, "Failed to set the edge filter", e) }
++        lastRotation = -1
++        applyOrientation()
++    }
++
++    private var lastRotation = -1
++
++    private fun applyOrientation() {
++        val rotation = displayManager.getDisplay(Display.DEFAULT_DISPLAY)?.rotation ?: return
++        if (rotation == lastRotation) return
++        val service = getTouchFeature() ?: return
++        runCatching {
++                if (DEBUG) Log.d(TAG, "panel orientation -> $rotation")
++                service.setModeValue(TOUCH_ID, MODE_PANEL_ORIENTATION, rotation)
++                lastRotation = rotation
++            }
++            .onFailure { e -> Log.e(TAG, "Failed to set the panel orientation", e) }
++    }
++}
+diff --git a/sepolicy/private/compat/202404/202404.ignore.cil b/sepolicy/private/compat/202404/202404.ignore.cil
+index cfe782d..7489bea 100644
+--- a/sepolicy/private/compat/202404/202404.ignore.cil
++++ b/sepolicy/private/compat/202404/202404.ignore.cil
+@@ -6,4 +6,6 @@
+ (typeattributeset new_objects
+   ( new_objects
+     vendor_hal_displayfeature_default
+-    vendor_hal_displayfeature_service))
++    vendor_hal_displayfeature_service
++    hal_touchfeature_xiaomi_default
++    hal_touchfeature_xiaomi_service))
+diff --git a/sepolicy/private/compat/30.0/30.0.ignore.cil b/sepolicy/private/compat/30.0/30.0.ignore.cil
+index cfe782d..7489bea 100644
+--- a/sepolicy/private/compat/30.0/30.0.ignore.cil
++++ b/sepolicy/private/compat/30.0/30.0.ignore.cil
+@@ -6,4 +6,6 @@
+ (typeattributeset new_objects
+   ( new_objects
+     vendor_hal_displayfeature_default
+-    vendor_hal_displayfeature_service))
++    vendor_hal_displayfeature_service
++    hal_touchfeature_xiaomi_default
++    hal_touchfeature_xiaomi_service))
+diff --git a/sepolicy/private/compat/31.0/31.0.ignore.cil b/sepolicy/private/compat/31.0/31.0.ignore.cil
+index cfe782d..7489bea 100644
+--- a/sepolicy/private/compat/31.0/31.0.ignore.cil
++++ b/sepolicy/private/compat/31.0/31.0.ignore.cil
+@@ -6,4 +6,6 @@
+ (typeattributeset new_objects
+   ( new_objects
+     vendor_hal_displayfeature_default
+-    vendor_hal_displayfeature_service))
++    vendor_hal_displayfeature_service
++    hal_touchfeature_xiaomi_default
++    hal_touchfeature_xiaomi_service))
+diff --git a/sepolicy/private/compat/32.0/32.0.ignore.cil b/sepolicy/private/compat/32.0/32.0.ignore.cil
+index cfe782d..7489bea 100644
+--- a/sepolicy/private/compat/32.0/32.0.ignore.cil
++++ b/sepolicy/private/compat/32.0/32.0.ignore.cil
+@@ -6,4 +6,6 @@
+ (typeattributeset new_objects
+   ( new_objects
+     vendor_hal_displayfeature_default
+-    vendor_hal_displayfeature_service))
++    vendor_hal_displayfeature_service
++    hal_touchfeature_xiaomi_default
++    hal_touchfeature_xiaomi_service))
+diff --git a/sepolicy/private/compat/33.0/33.0.ignore.cil b/sepolicy/private/compat/33.0/33.0.ignore.cil
+index cfe782d..7489bea 100644
+--- a/sepolicy/private/compat/33.0/33.0.ignore.cil
++++ b/sepolicy/private/compat/33.0/33.0.ignore.cil
+@@ -6,4 +6,6 @@
+ (typeattributeset new_objects
+   ( new_objects
+     vendor_hal_displayfeature_default
+-    vendor_hal_displayfeature_service))
++    vendor_hal_displayfeature_service
++    hal_touchfeature_xiaomi_default
++    hal_touchfeature_xiaomi_service))
+diff --git a/sepolicy/private/compat/34.0/34.0.ignore.cil b/sepolicy/private/compat/34.0/34.0.ignore.cil
+index cfe782d..7489bea 100644
+--- a/sepolicy/private/compat/34.0/34.0.ignore.cil
++++ b/sepolicy/private/compat/34.0/34.0.ignore.cil
+@@ -6,4 +6,6 @@
+ (typeattributeset new_objects
+   ( new_objects
+     vendor_hal_displayfeature_default
+-    vendor_hal_displayfeature_service))
++    vendor_hal_displayfeature_service
++    hal_touchfeature_xiaomi_default
++    hal_touchfeature_xiaomi_service))
+diff --git a/sepolicy/private/parts_app.te b/sepolicy/private/parts_app.te
+index 4bcdde1..626635e 100644
+--- a/sepolicy/private/parts_app.te
++++ b/sepolicy/private/parts_app.te
+@@ -18,3 +18,6 @@ allow parts_app system_app_data_file:lnk_file create_file_perms;
+ allow parts_app vendor_hal_displayfeature_service:service_manager find;
+ binder_call(parts_app, vendor_hal_displayfeature_default)
+ 
++# Touchfeature
++allow parts_app hal_touchfeature_xiaomi_service:service_manager find;
++binder_call(parts_app, hal_touchfeature_xiaomi_default)
+diff --git a/sepolicy/public/hal_touchfeature_xiaomi.te b/sepolicy/public/hal_touchfeature_xiaomi.te
+new file mode 100644
+index 0000000..15c1cf9
+--- /dev/null
++++ b/sepolicy/public/hal_touchfeature_xiaomi.te
+@@ -0,0 +1,3 @@
++# Declared here so that the system_ext Parts app can use the service.
++type hal_touchfeature_xiaomi_default, domain;
++type hal_touchfeature_xiaomi_service, protected_service, service_manager_type, hal_service_type;
+diff --git a/sepolicy/vendor/hal_touchfeature_xiaomi.te b/sepolicy/vendor/hal_touchfeature_xiaomi.te
+index beecd6c..67dfbf4 100644
+--- a/sepolicy/vendor/hal_touchfeature_xiaomi.te
++++ b/sepolicy/vendor/hal_touchfeature_xiaomi.te
+@@ -1,4 +1,3 @@
+-type hal_touchfeature_xiaomi_default, domain;
+ type hal_touchfeature_xiaomi_default_exec, exec_type, file_type, vendor_file_type;
+ 
+ binder_call(hal_touchfeature_xiaomi_default, system_server)
+diff --git a/sepolicy/vendor/service.te b/sepolicy/vendor/service.te
+index 364b781..58eb329 100644
+--- a/sepolicy/vendor/service.te
++++ b/sepolicy/vendor/service.te
+@@ -7,5 +7,3 @@ type hal_idmanager_service, protected_service, service_manager_type, hal_service
+ # MTD service
+ type hal_mtdservice_service, protected_service, service_manager_type, hal_service_type;
+ 
+-# TouchFeature
+-type hal_touchfeature_xiaomi_service, protected_service, service_manager_type, hal_service_type;

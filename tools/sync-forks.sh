@@ -42,6 +42,7 @@ fi
 GH_MIRRORS="
 device/xiaomi/dash-miuicamera android_device_xiaomi_dash-miuicamera
 device/xiaomi/dash-kernel android_device_xiaomi_dash-kernel
+hardware/mediatek android_hardware_mediatek
 hardware/xiaomi android_hardware_xiaomi
 device/mediatek/sepolicy_vndr android_device_mediatek_sepolicy_vndr
 packages/apps/LunarisDolby android_packages_apps_LunarisDolby
@@ -54,7 +55,6 @@ kernel/platform/kernel-6.6/build/bazel_mgk_rules android_kernel_build_bazel_mgk_
 # Forks that also carry the upstream branch untouched next to our fix branches.
 GH_OURS="
 device/xiaomi/dash android_device_xiaomi_dash infinity infinity-kleaf
-hardware/mediatek android_hardware_mediatek infinity
 "
 # path  gitlab-fork-name  upstream-remote
 GL_MIRRORS="
@@ -71,6 +71,8 @@ clean_range() {  # repo, range -> 0 if no commit in range carries one of our pri
         echo "no private address list (~/.config/dash/private-emails): refusing to push" >&2
         return 1
     fi
+    # A range that does not resolve (remote branch not pushed yet) proves nothing.
+    git -C "$1" rev-list "$2" >/dev/null 2>&1 || return 1
     for addr in $priv; do
         [ "$addr" = "$NOREPLY" ] && continue
         if git -C "$1" log --format='%ae%n%ce' "$2" 2>/dev/null | grep -qixF "$addr"; then
@@ -111,6 +113,11 @@ else
     done <<< "$GL_MIRRORS"
 fi
 
+# path  gitlab-fork-name  branches with our fixes
+GL_OURS="
+vendor/xiaomi/dash proprietary_vendor_xiaomi_dash infinity
+"
+
 if [ "$PUSH_OURS" = 1 ]; then
     echo "== Our fix branches (force-with-lease after a rebase)"
     while read -r p n branches; do
@@ -124,4 +131,24 @@ if [ "$PUSH_OURS" = 1 ]; then
             echo "ok ($(git -C "$SRC/$p" rev-parse --short "$b"))"
         done
     done <<< "$GH_OURS"
+    if ssh-add -l >/dev/null 2>&1; then
+        while read -r p n branches; do
+            [ -n "$p" ] || continue
+            for b in $branches; do
+                printf '%-60s ' "$n:$b (GitLab)"
+                if ! clean_range "$SRC/$p" "refs/remotes/dashgl/$b..$b" \
+                   && ! clean_range "$SRC/$p" "refs/remotes/ossgl/$BRANCH..$b"; then
+                    echo "REFUSED: personal e-mail in commits to push"; continue
+                fi
+                if r=$("${GIT_LFS[@]}" -C "$SRC/$p" push -q --force "git@gitlab.com:$GL_USER/$n.git" \
+                        "$b:refs/heads/$b" </dev/null 2>&1); then
+                    echo "ok ($(git -C "$SRC/$p" rev-parse --short "$b"))"
+                else
+                    echo "FAILED: $(echo "$r" | grep -v '^\s*$' | head -1)"
+                fi
+            done
+        done <<< "$GL_OURS"
+    else
+        echo "   GitLab fix branches skipped: no key in the ssh-agent"
+    fi
 fi

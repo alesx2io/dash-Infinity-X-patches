@@ -1,0 +1,33 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: alesx2io <96351978+alesx2io@users.noreply.github.com>
+Date: Fri, 20 Nov 2026 21:23:51 +0100
+Subject: [PATCH] dash: use the AOSP lmkd defaults
+
+kill_timeout_ms 50, stall_limit_critical 40 and filecache_min_kb 150 MB come
+from the HyperOS vendor properties, where they work together with the
+Xiaomi memory management that keeps apps alive by other means. On AOSP they
+made lmkd kill background apps earlier than needed on a 12 GB device.
+
+Use the AOSP defaults (100 ms, 100, 0).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ vendor.prop | 5 -----
+ 1 file changed, 5 deletions(-)
+
+diff --git a/vendor.prop b/vendor.prop
+index 6cdd022..ba676db 100644
+--- a/vendor.prop
++++ b/vendor.prop
+@@ -251,11 +251,6 @@ debug.hwui.target_cpu_time_percent=30
+ debug.hwui.use_hint_manager=true
+ debug.sf.enable_adpf_cpu_hint=true
+ 
+-# LMK tuning
+-ro.lmk.filecache_min_kb=153600
+-ro.lmk.kill_timeout_ms=50
+-ro.lmk.stall_limit_critical=40
+-
+ # Media
+ debug.stagefright.c2inputsurface=-1
+ media.c2.dmabuf.padding=3072

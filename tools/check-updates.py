@@ -37,6 +37,10 @@ UPSTREAM_MANIFEST = "https://github.com/oss-dash/android_local_manifests"
 # Our fork remotes (local manifest) -> remote of the original oss-dash repository.
 FORK_REMOTES = {"dash": "ossgh", "dashgl": "ossgl"}
 FORK_UPSTREAM_BRANCH = "lineage-24.0"
+# Upstream commits a fix branch leaves out on purpose (subject substrings).
+INTENDED_MISSING = {
+    ("device/xiaomi/dash", "infinity"): ("Build kernel inline with Kleaf", "Load the DSAC DMA-BUF mapper"),
+}
 LFS_OFF = ["-c", "filter.lfs.smudge=", "-c", "filter.lfs.process=", "-c", "filter.lfs.required=false",
            "-c", "filter.lfs.clean="]
 
@@ -176,8 +180,23 @@ def check_project(src, path, do_fetch):
         commits = out(full, "rev-list", "--reverse", f"{base}..{b}").split()
         res["local"][b] = {"base": base, "commits": commits}
 
+    # Upstream commits our fix branches do not contain yet (compared by patch content, so
+    # upstream commits that only re-apply our own changes are not counted).
+    missing = {}
+    for b in res["local"]:
+        excluded = INTENDED_MISSING.get((path, b), ())
+        lines = out(full, "cherry", b, new).splitlines()
+        subj = [out(full, "log", "-1", "--format=%h %s", l.split()[1]) for l in lines if l.startswith("+ ")]
+        subj = [s for s in subj if not any(x in s for x in excluded)]
+        if subj:
+            missing[b] = subj
+    res["missing"] = missing
+
     if old == new:
-        res["status"] = "UP-TO-DATE"
+        res["status"] = "REVIEW" if missing else "UP-TO-DATE"
+        for b, subj in missing.items():
+            res["notes"].append(f"our branch `{b}` lacks {len(subj)} upstream commit(s): "
+                                + "; ".join(subj[:5]))
         return res
 
     rewritten = git(full, "merge-base", "--is-ancestor", old, new).returncode != 0
